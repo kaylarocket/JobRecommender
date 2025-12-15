@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Login</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link
+			href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap"
+			rel="stylesheet"
+		>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap"
+			rel="stylesheet"
+		>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap"
+			rel="stylesheet"
+		>
+		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+		<script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
+		<style type="text/tailwindcss">
+			@theme inline {
+				--color-background: var(--background);
+				--color-foreground: var(--foreground);
+				--color-primary: var(--primary);
+				--color-primary-foreground: var(--primary-foreground);
+				--color-muted: var(--muted);
+				--color-muted-foreground: var(--muted-foreground);
+				--color-border: var(--border);
+				--color-card: var(--card);
+				--font-font-sans: var(--font-sans);
+				--font-font-heading: var(--font-heading);
+			}
+			:root {
+				--background: #f8fafc;
+				--foreground: #0f172a;
+				--primary: #4f46e5;
+				--primary-foreground: #ffffff;
+				--muted: #f1f5f9;
+				--muted-foreground: #64748b;
+				--card: #ffffff;
+				--border: #e2e8f0;
+				--font-sans: "Plus Jakarta Sans";
+				--font-heading: "Plus Jakarta Sans";
+				--radius: 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="min-h-screen bg-background font-sans text-foreground flex flex-col justify-center px-6 py-12">
+			
+			<div class="w-full max-w-sm mx-auto">
+				<div class="mb-10 text-center">
+					<div class="size-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary/30">
+						<iconify-icon icon="solar:briefcase-bold-duotone" class="size-9 text-primary-foreground"></iconify-icon>
+					</div>
+					<h1 class="text-3xl font-bold font-heading mb-2">Welcome Back!</h1>
+					<p class="text-muted-foreground text-sm">Please sign in to your account</p>
+				</div>
+
+				<div class="space-y-5 mb-8">
+					<div class="space-y-2">
+						<label class="text-xs font-bold text-foreground ml-1">Email Address</label>
+						<div class="relative">
+							<div class="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+								<iconify-icon icon="solar:letter-linear" class="size-5"></iconify-icon>
+							</div>
+							<input
+								type="email"
+								placeholder="alex@example.com"
+								class="w-full h-14 pl-12 pr-4 bg-white border border-border rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground shadow-sm transition-all"
+							>
+						</div>
+					</div>
+					<div class="space-y-2">
+						<label class="text-xs font-bold text-foreground ml-1">Password</label>
+						<div class="relative">
+							<div class="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+								<iconify-icon icon="solar:lock-password-linear" class="size-5"></iconify-icon>
+							</div>
+							<input
+								type="password"
+								placeholder="••••••••"
+								class="w-full h-14 pl-12 pr-12 bg-white border border-border rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground shadow-sm transition-all"
+							>
+							<button class="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+								<iconify-icon icon="solar:eye-linear" class="size-5"></iconify-icon>
+							</button>
+						</div>
+					</div>
+					<div class="flex justify-end">
+						<a href="#" class="text-sm font-semibold text-primary hover:text-primary/80">Forgot Password?</a>
+					</div>
+				</div>
+
+				<button class="w-full h-14 bg-primary text-primary-foreground rounded-2xl font-bold text-base shadow-lg shadow-primary/25 hover:bg-primary/90 transition-colors mb-6">
+					Sign In
+				</button>
+
+				<div class="relative mb-6">
+					<div class="absolute inset-0 flex items-center">
+						<div class="w-full border-t border-border"></div>
+					</div>
+					<div class="relative flex justify-center text-xs">
+						<span class="px-2 bg-background text-muted-foreground">Or continue with</span>
+					</div>
+				</div>
+
+				<div class="grid grid-cols-2 gap-4 mb-8">
+					<button class="flex items-center justify-center gap-2 h-14 bg-white border border-border rounded-2xl hover:bg-slate-50 transition-colors font-semibold text-sm">
+						<iconify-icon icon="logos:google-icon" class="size-5"></iconify-icon>
+						Google
+					</button>
+					<button class="flex items-center justify-center gap-2 h-14 bg-white border border-border rounded-2xl hover:bg-slate-50 transition-colors font-semibold text-sm">
+						<iconify-icon icon="logos:apple" class="size-5 text-black"></iconify-icon>
+						Apple
+					</button>
+				</div>
+
+				<p class="text-center text-sm text-muted-foreground">
+					Don't have an account? 
+					<a href="#" class="font-bold text-primary hover:underline">Sign Up</a>
+				</p>
+			</div>
+		</div>
+	</body>
+</html>

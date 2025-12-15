@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Profile</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link
+			href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap"
+			rel="stylesheet"
+		>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap"
+			rel="stylesheet"
+		>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap"
+			rel="stylesheet"
+		>
+		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+		<script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
+		<style type="text/tailwindcss">
+			@theme inline {
+				--color-background: var(--background);
+				--color-foreground: var(--foreground);
+				--color-primary: var(--primary);
+				--color-primary-foreground: var(--primary-foreground);
+				--color-secondary: var(--secondary);
+				--color-secondary-foreground: var(--secondary-foreground);
+				--color-muted: var(--muted);
+				--color-muted-foreground: var(--muted-foreground);
+				--color-accent: var(--accent);
+				--color-accent-foreground: var(--accent-foreground);
+				--color-destructive: var(--destructive);
+				--color-card: var(--card);
+				--color-card-foreground: var(--card-foreground);
+				--color-popover: var(--popover);
+				--color-popover-foreground: var(--popover-foreground);
+				--color-border: var(--border);
+				--color-input: var(--input);
+				--color-ring: var(--ring);
+				--radius-sm: calc(var(--radius) - 4px);
+				--radius-md: calc(var(--radius) - 2px);
+				--radius-lg: var(--radius);
+				--radius-xl: calc(var(--radius) + 4px);
+				--font-font-sans: var(--font-sans);
+				--font-font-heading: var(--font-heading);
+			}
+			:root {
+				--background: #f8fafc;
+				--foreground: #0f172a;
+				--primary: #4f46e5;
+				--primary-foreground: #ffffff;
+				--secondary: #eef2ff;
+				--secondary-foreground: #4338ca;
+				--muted: #f1f5f9;
+				--muted-foreground: #64748b;
+				--accent: #f1f5f9;
+				--accent-foreground: #0f172a;
+				--destructive: #ef4444;
+				--card: #ffffff;
+				--card-foreground: #0f172a;
+				--popover: #ffffff;
+				--popover-foreground: #0f172a;
+				--border: #e2e8f0;
+				--input: #ffffff;
+				--ring: #4f46e5;
+				--font-sans: "Plus Jakarta Sans";
+				--font-heading: "Plus Jakarta Sans";
+				--radius: 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="flex flex-col h-full bg-background font-sans text-foreground overflow-hidden relative">
+			<div class="flex-1 overflow-y-auto pb-24">
+				<div class="px-6 pt-8 pb-4">
+					<div class="flex justify-between items-center mb-6">
+						<h1 class="text-2xl font-bold font-heading text-foreground">My Profile</h1>
+						<button class="size-11 flex items-center justify-center text-foreground rounded-xl hover:bg-slate-50">
+							<iconify-icon icon="solar:settings-bold" class="size-6"></iconify-icon>
+						</button>
+					</div>
+
+					<div class="flex flex-col items-center mb-8">
+						<div class="relative mb-4">
+							<img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Profile" class="size-24 rounded-full border-4 border-white shadow-md object-cover">
+							<button class="absolute bottom-0 right-0 size-8 bg-primary text-white rounded-full border-2 border-white flex items-center justify-center shadow-sm">
+								<iconify-icon icon="solar:camera-linear" class="size-4"></iconify-icon>
+							</button>
+						</div>
+						<h2 class="text-xl font-bold text-foreground">Alex Johnson</h2>
+						<p class="text-sm text-muted-foreground mb-1">Product Designer</p>
+						<div class="flex items-center gap-1 text-muted-foreground text-xs">
+							<iconify-icon icon="solar:map-point-linear" class="size-3.5"></iconify-icon>
+							<span>San Francisco, CA</span>
+						</div>
+					</div>
+
+					<div class="grid grid-cols-3 gap-3 mb-6">
+						<div class="bg-card p-4 rounded-2xl border border-border shadow-sm text-center">
+							<span class="block text-xl font-bold text-foreground mb-1">12</span>
+							<span class="text-xs text-muted-foreground font-medium">Applied</span>
+						</div>
+						<div class="bg-card p-4 rounded-2xl border border-border shadow-sm text-center">
+							<span class="block text-xl font-bold text-foreground mb-1">5</span>
+							<span class="text-xs text-muted-foreground font-medium">Reviewed</span>
+						</div>
+						<div class="bg-card p-4 rounded-2xl border border-border shadow-sm text-center">
+							<span class="block text-xl font-bold text-foreground mb-1">3</span>
+							<span class="text-xs text-muted-foreground font-medium">Interviews</span>
+						</div>
+					</div>
+
+					<div class="bg-card p-5 rounded-2xl border border-border shadow-sm mb-4">
+						<div class="flex justify-between items-center mb-3">
+							<h3 class="font-bold text-base text-foreground">About Me</h3>
+							<button class="text-primary text-sm font-medium">Edit</button>
+						</div>
+						<p class="text-sm text-muted-foreground leading-relaxed">
+							Passionate Product Designer with 3 years of experience in creating user-centered digital products. I specialize in UI/UX design, prototyping, and design systems.
+						</p>
+					</div>
+
+					<div class="bg-card p-5 rounded-2xl border border-border shadow-sm mb-4">
+						<div class="flex justify-between items-center mb-3">
+							<h3 class="font-bold text-base text-foreground">Skills</h3>
+							<button class="text-primary text-sm font-medium">Add</button>
+						</div>
+						<div class="flex flex-wrap gap-2">
+							<span class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium">Figma</span>
+							<span class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium">UI/UX</span>
+							<span class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium">Prototyping</span>
+							<span class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium">Webflow</span>
+							<span class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium">HTML/CSS</span>
+						</div>
+					</div>
+
+					<div class="bg-card p-5 rounded-2xl border border-border shadow-sm">
+						<div class="flex justify-between items-center mb-4">
+							<h3 class="font-bold text-base text-foreground">Resume</h3>
+							<button class="text-primary text-sm font-medium">Update</button>
+						</div>
+						<div class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-border">
+							<div class="size-10 bg-red-100 text-red-600 rounded-lg flex items-center justify-center shrink-0">
+								<iconify-icon icon="solar:file-text-bold" class="size-5"></iconify-icon>
+							</div>
+							<div class="flex-1 overflow-hidden">
+								<p class="text-sm font-semibold text-foreground truncate">Alex_Johnson_CV_2024.pdf</p>
+								<p class="text-xs text-muted-foreground">PDF • 2.4 MB</p>
+							</div>
+							<button class="text-muted-foreground hover:text-foreground">
+								<iconify-icon icon="solar:menu-dots-bold" class="size-5"></iconify-icon>
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="fixed bottom-0 left-0 right-0 bg-white border-t border-border h-20 pb-2 z-50 px-6">
+				<div class="flex justify-between items-center h-full">
+					<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-muted-foreground hover:text-foreground">
+						<iconify-icon icon="solar:home-2-linear" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-medium">Home</span>
+					</button>
+					<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-muted-foreground hover:text-foreground">
+						<iconify-icon icon="solar:magnifer-linear" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-medium">Search</span>
+					</button>
+					<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-muted-foreground hover:text-foreground">
+						<iconify-icon icon="solar:document-text-linear" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-medium">Applications</span>
+					</button>
+					<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-primary">
+						<iconify-icon icon="solar:user-bold" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-bold">Profile</span>
+					</button>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Home</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link
+			href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap"
+			rel="stylesheet"
+		>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap"
+			rel="stylesheet"
+		>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap"
+			rel="stylesheet"
+		>
+		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+		<script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
+		<style type="text/tailwindcss">
+		@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --font-font-sans: var(--font-sans);
+  --font-font-heading: var(--font-heading);
+  --font-font-serif: var(--font-serif);
+  --font-font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-wide: calc(var(--tracking-normal) + 0.025em);
+  --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+  --tracking-widest: calc(var(--tracking-normal) + 0.1em);
+  --tracking-normal: var(--tracking-normal);
+}
+
+		:root {
+			--background: #f8fafc;
+			--foreground: #0f172a;
+			--primary: #4f46e5;
+			--primary-foreground: #ffffff;
+			--secondary: #eef2ff;
+			--secondary-foreground: #4338ca;
+			--muted: #f1f5f9;
+			--muted-foreground: #64748b;
+			--accent: #f1f5f9;
+			--accent-foreground: #0f172a;
+			--destructive: #ef4444;
+			--card: #ffffff;
+			--card-foreground: #0f172a;
+			--popover: #ffffff;
+			--popover-foreground: #0f172a;
+			--border: #e2e8f0;
+			--input: #ffffff;
+			--ring: #4f46e5;
+			--sidebar: #ffffff;
+			--sidebar-foreground: #0f172a;
+			--sidebar-primary: #4f46e5;
+			--sidebar-primary-foreground: #ffffff;
+			--sidebar-accent: #eef2ff;
+			--sidebar-accent-foreground: #4338ca;
+			--sidebar-border: #e2e8f0;
+			--sidebar-ring: #4f46e5;
+			--chart-1: #4f46e5;
+			--chart-2: #10b981;
+			--chart-3: #f59e0b;
+			--chart-4: #ec4899;
+			--chart-5: #8b5cf6;
+
+			--font-sans: "Plus Jakarta Sans";
+			--font-heading: "Plus Jakarta Sans";
+			--font-serif: "Playfair Display";
+			--font-mono: "JetBrains Mono";
+
+			--radius: 1rem;
+		}
+		</style>
+	</head>
+	<body>
+		<div
+			class="flex flex-col h-full bg-background font-sans text-foreground overflow-hidden relative"
+		>
+			<div class="flex-1 overflow-y-auto pb-24">
+				<div class="px-6 pt-8 pb-4">
+					<div class="flex justify-between items-center mb-4">
+						<div>
+							<p class="text-muted-foreground text-sm font-medium mb-1">Hello, Alex 👋</p>
+							<h1 class="text-2xl font-bold font-heading text-foreground">Find Your First Job</h1>
+						</div>
+						<div class="relative">
+							<img
+								src="https://randomuser.me/api/portraits/men/32.jpg"
+								alt="Profile"
+								class="size-10 rounded-full border-2 border-white shadow-sm object-cover"
+							>
+							<div
+								class="absolute top-0 right-0 size-3 bg-red-500 border-2 border-white rounded-full"
+							/>
+						</div>
+					</div>
+					<div class="relative mt-2">
+						<div class="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+							<iconify-icon icon="solar:magnifer-linear" class="size-5"></iconify-icon>
+						</div>
+						<input
+							type="text"
+							placeholder="Search for jobs, companies..."
+							class="w-full h-12 pl-12 pr-12 bg-white border border-border rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground shadow-sm"
+						>
+						<div class="absolute right-4 top-1/2 -translate-y-1/2 text-primary">
+							<iconify-icon icon="solar:tuning-2-bold" class="size-5"></iconify-icon>
+						</div>
+					</div>
+				</div>
+				<div class="mb-6">
+					<div class="flex gap-3 overflow-x-auto px-6 pb-2 no-scrollbar snap-x">
+						<button
+							class="snap-start shrink-0 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-md shadow-primary/25 whitespace-nowrap"
+						>
+							All Jobs
+						</button>
+						<button
+							class="snap-start shrink-0 px-5 py-2.5 bg-white text-muted-foreground border border-border rounded-xl text-sm font-medium whitespace-nowrap hover:bg-slate-50"
+						>
+							Engineering
+						</button>
+						<button
+							class="snap-start shrink-0 px-5 py-2.5 bg-white text-muted-foreground border border-border rounded-xl text-sm font-medium whitespace-nowrap hover:bg-slate-50"
+						>
+							Design
+						</button>
+						<button
+							class="snap-start shrink-0 px-5 py-2.5 bg-white text-muted-foreground border border-border rounded-xl text-sm font-medium whitespace-nowrap hover:bg-slate-50"
+						>
+							Marketing
+						</button>
+						<button
+							class="snap-start shrink-0 px-5 py-2.5 bg-white text-muted-foreground border border-border rounded-xl text-sm font-medium whitespace-nowrap hover:bg-slate-50"
+						>
+							Business
+						</button>
+						<button
+							class="snap-start shrink-0 px-5 py-2.5 bg-white text-muted-foreground border border-border rounded-xl text-sm font-medium whitespace-nowrap hover:bg-slate-50"
+						>
+							Technology
+						</button>
+					</div>
+				</div>
+				<div class="px-6">
+					<div class="flex justify-between items-end mb-4">
+						<h2 class="text-lg font-bold font-heading">Recommended for you</h2>
+						<button class="text-sm font-medium text-primary">See All</button>
+					</div>
+					<div class="space-y-4">
+						<div
+							class="bg-card p-5 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow"
+						>
+							<div class="flex justify-between items-start mb-4">
+								<div class="flex gap-4">
+									<div
+										class="size-12 bg-blue-50 rounded-xl flex items-center justify-center shrink-0"
+									>
+										<iconify-icon icon="logos:google-icon" class="size-7"></iconify-icon>
+									</div>
+									<div>
+										<h3 class="font-bold text-base text-foreground">Junior UI/UX Designer</h3>
+										<p class="text-sm text-muted-foreground">Google Inc.</p>
+									</div>
+								</div>
+								<button class="text-muted-foreground hover:text-primary transition-colors">
+									<iconify-icon icon="solar:bookmark-linear" class="size-6"></iconify-icon>
+								</button>
+							</div>
+							<div class="flex flex-wrap gap-2 mb-4">
+								<span
+									class="px-3 py-1 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon icon="solar:briefcase-linear" class="size-3.5"></iconify-icon>
+									Full-time</span
+								><span
+									class="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon icon="solar:map-point-linear" class="size-3.5"></iconify-icon>
+									Mountain View, CA</span
+								><span
+									class="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon
+										icon="solar:dollar-minimalistic-linear"
+										class="size-3.5"
+									></iconify-icon>
+									$80k - $120k</span
+								>
+							</div>
+							<div
+								class="flex items-center justify-between pt-3 border-t border-dashed border-border"
+							>
+								<span class="text-xs text-muted-foreground">Posted 2 days ago</span>
+								<button class="text-xs font-semibold text-primary">Apply Now</button>
+							</div>
+						</div>
+						<div
+							class="bg-card p-5 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow"
+						>
+							<div class="flex justify-between items-start mb-4">
+								<div class="flex gap-4">
+									<div
+										class="size-12 bg-green-50 rounded-xl flex items-center justify-center shrink-0"
+									>
+										<iconify-icon icon="logos:spotify-icon" class="size-7"></iconify-icon>
+									</div>
+									<div>
+										<h3 class="font-bold text-base text-foreground">Frontend Developer Intern</h3>
+										<p class="text-sm text-muted-foreground">Spotify</p>
+									</div>
+								</div>
+								<button class="text-muted-foreground hover:text-primary transition-colors">
+									<iconify-icon icon="solar:bookmark-linear" class="size-6"></iconify-icon>
+								</button>
+							</div>
+							<div class="flex flex-wrap gap-2 mb-4">
+								<span
+									class="px-3 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon icon="solar:clock-circle-linear" class="size-3.5"></iconify-icon>
+									Internship</span
+								><span
+									class="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon icon="solar:map-point-linear" class="size-3.5"></iconify-icon>
+									Remote</span
+								><span
+									class="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon
+										icon="solar:dollar-minimalistic-linear"
+										class="size-3.5"
+									></iconify-icon>
+									$30/hr</span
+								>
+							</div>
+							<div
+								class="flex items-center justify-between pt-3 border-t border-dashed border-border"
+							>
+								<span class="text-xs text-muted-foreground">Posted 5 hours ago</span>
+								<button class="text-xs font-semibold text-primary">Apply Now</button>
+							</div>
+						</div>
+						<div
+							class="bg-card p-5 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow"
+						>
+							<div class="flex justify-between items-start mb-4">
+								<div class="flex gap-4">
+									<div
+										class="size-12 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0"
+									>
+										<iconify-icon icon="logos:stripe" class="size-7"></iconify-icon>
+									</div>
+									<div>
+										<h3 class="font-bold text-base text-foreground">
+											Product Marketing Specialist
+										</h3>
+										<p class="text-sm text-muted-foreground">Stripe</p>
+									</div>
+								</div>
+								<button class="text-muted-foreground hover:text-primary transition-colors">
+									<iconify-icon icon="solar:bookmark-linear" class="size-6"></iconify-icon>
+								</button>
+							</div>
+							<div class="flex flex-wrap gap-2 mb-4">
+								<span
+									class="px-3 py-1 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon icon="solar:briefcase-linear" class="size-3.5"></iconify-icon>
+									Full-time</span
+								><span
+									class="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon icon="solar:map-point-linear" class="size-3.5"></iconify-icon>New
+									York, NY</span
+								>
+							</div>
+							<div
+								class="flex items-center justify-between pt-3 border-t border-dashed border-border"
+							>
+								<span class="text-xs text-muted-foreground">Posted 1 week ago</span>
+								<button class="text-xs font-semibold text-primary">Apply Now</button>
+							</div>
+						</div>
+						<div
+							class="bg-card p-5 rounded-2xl border border-border shadow-sm hover:shadow-md transition-shadow"
+						>
+							<div class="flex justify-between items-start mb-4">
+								<div class="flex gap-4">
+									<div
+										class="size-12 bg-red-50 rounded-xl flex items-center justify-center shrink-0"
+									>
+										<iconify-icon icon="logos:airbnb-icon" class="size-7"></iconify-icon>
+									</div>
+									<div>
+										<h3 class="font-bold text-base text-foreground">Data Analyst</h3>
+										<p class="text-sm text-muted-foreground">Airbnb</p>
+									</div>
+								</div>
+								<button class="text-muted-foreground hover:text-primary transition-colors">
+									<iconify-icon icon="solar:bookmark-linear" class="size-6"></iconify-icon>
+								</button>
+							</div>
+							<div class="flex flex-wrap gap-2 mb-4">
+								<span
+									class="px-3 py-1 bg-secondary text-secondary-foreground rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon icon="solar:briefcase-linear" class="size-3.5"></iconify-icon>
+									Full-time</span
+								><span
+									class="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-medium flex items-center gap-1"
+									><iconify-icon icon="solar:map-point-linear" class="size-3.5"></iconify-icon>San
+									Francisco, CA</span
+								>
+							</div>
+							<div
+								class="flex items-center justify-between pt-3 border-t border-dashed border-border"
+							>
+								<span class="text-xs text-muted-foreground">Posted 3 days ago</span>
+								<button class="text-xs font-semibold text-primary">Apply Now</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div
+				class="fixed bottom-0 left-0 right-0 bg-white border-t border-border h-20 pb-2 z-50 px-6"
+			>
+				<div class="flex justify-between items-center h-full">
+					<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-primary">
+						<iconify-icon icon="solar:home-2-bold" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-bold">Home</span>
+					</button>
+					<button
+						class="flex flex-col items-center justify-center w-16 h-full gap-1 text-muted-foreground hover:text-foreground"
+					>
+						<iconify-icon icon="solar:magnifer-linear" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-medium">Search</span>
+					</button>
+					<button
+						class="flex flex-col items-center justify-center w-16 h-full gap-1 text-muted-foreground hover:text-foreground"
+					>
+						<iconify-icon icon="solar:document-text-linear" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-medium">Applications</span>
+					</button>
+					<button
+						class="flex flex-col items-center justify-center w-16 h-full gap-1 text-muted-foreground hover:text-foreground"
+					>
+						<iconify-icon icon="solar:user-linear" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-medium">Profile</span>
+					</button>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

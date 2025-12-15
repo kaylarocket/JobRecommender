@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Recruiters</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link
+			href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap"
+			rel="stylesheet"
+		>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap"
+			rel="stylesheet"
+		>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap"
+			rel="stylesheet"
+		>
+		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+		<script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
+		<style type="text/tailwindcss">
+			@theme inline {
+				--color-background: var(--background);
+				--color-foreground: var(--foreground);
+				--color-primary: var(--primary);
+				--color-primary-foreground: var(--primary-foreground);
+				--color-secondary: var(--secondary);
+				--color-secondary-foreground: var(--secondary-foreground);
+				--color-muted: var(--muted);
+				--color-muted-foreground: var(--muted-foreground);
+				--color-border: var(--border);
+				--color-card: var(--card);
+				--font-font-sans: var(--font-sans);
+				--font-font-heading: var(--font-heading);
+			}
+			:root {
+				--background: #f8fafc;
+				--foreground: #0f172a;
+				--primary: #4f46e5;
+				--primary-foreground: #ffffff;
+				--secondary: #eef2ff;
+				--secondary-foreground: #4338ca;
+				--muted: #f1f5f9;
+				--muted-foreground: #64748b;
+				--card: #ffffff;
+				--border: #e2e8f0;
+				--font-sans: "Plus Jakarta Sans";
+				--font-heading: "Plus Jakarta Sans";
+				--radius: 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="flex flex-col h-full bg-background font-sans text-foreground overflow-hidden relative">
+			<div class="flex-1 overflow-y-auto pb-24">
+				<div class="px-6 pt-8 pb-4">
+					<div class="flex justify-between items-center mb-6">
+						<h1 class="text-2xl font-bold font-heading text-foreground">Top Companies</h1>
+						<button class="size-11 flex items-center justify-center text-foreground rounded-xl hover:bg-slate-50">
+							<iconify-icon icon="solar:sort-vertical-bold" class="size-6"></iconify-icon>
+						</button>
+					</div>
+					
+					<div class="relative mb-6">
+						<div class="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+							<iconify-icon icon="solar:magnifer-linear" class="size-5"></iconify-icon>
+						</div>
+						<input
+							type="text"
+							placeholder="Search companies..."
+							class="w-full h-12 pl-12 pr-4 bg-white border border-border rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground shadow-sm"
+						>
+					</div>
+
+					<div class="space-y-4">
+						<div class="bg-card p-5 rounded-2xl border border-border shadow-sm">
+							<div class="flex items-start gap-4 mb-4">
+								<div class="size-14 bg-blue-50 rounded-xl flex items-center justify-center shrink-0">
+									<iconify-icon icon="logos:google-icon" class="size-8"></iconify-icon>
+								</div>
+								<div class="flex-1">
+									<h3 class="font-bold text-lg text-foreground">Google Inc.</h3>
+									<p class="text-sm text-muted-foreground">Technology • Mountain View</p>
+									<div class="flex items-center gap-1 mt-1">
+										<iconify-icon icon="solar:star-bold" class="size-3.5 text-yellow-400"></iconify-icon>
+										<span class="text-xs font-bold text-foreground">4.8</span>
+										<span class="text-xs text-muted-foreground">(2.1k reviews)</span>
+									</div>
+								</div>
+								<button class="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-xl">Follow</button>
+							</div>
+							<div class="flex items-center justify-between pt-3 border-t border-dashed border-border">
+								<span class="text-xs font-medium text-muted-foreground">12 Open Positions</span>
+								<div class="flex -space-x-2">
+									<img class="size-6 rounded-full border-2 border-white" src="https://randomuser.me/api/portraits/women/11.jpg" alt="">
+									<img class="size-6 rounded-full border-2 border-white" src="https://randomuser.me/api/portraits/men/22.jpg" alt="">
+									<div class="size-6 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[8px] font-bold text-muted-foreground">+5</div>
+								</div>
+							</div>
+						</div>
+
+						<div class="bg-card p-5 rounded-2xl border border-border shadow-sm">
+							<div class="flex items-start gap-4 mb-4">
+								<div class="size-14 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0">
+									<iconify-icon icon="logos:stripe" class="size-8"></iconify-icon>
+								</div>
+								<div class="flex-1">
+									<h3 class="font-bold text-lg text-foreground">Stripe</h3>
+									<p class="text-sm text-muted-foreground">Fintech • San Francisco</p>
+									<div class="flex items-center gap-1 mt-1">
+										<iconify-icon icon="solar:star-bold" class="size-3.5 text-yellow-400"></iconify-icon>
+										<span class="text-xs font-bold text-foreground">4.9</span>
+										<span class="text-xs text-muted-foreground">(850 reviews)</span>
+									</div>
+								</div>
+								<button class="px-4 py-2 bg-white border border-border text-muted-foreground text-xs font-bold rounded-xl">Following</button>
+							</div>
+							<div class="flex items-center justify-between pt-3 border-t border-dashed border-border">
+								<span class="text-xs font-medium text-muted-foreground">8 Open Positions</span>
+								<div class="flex -space-x-2">
+									<img class="size-6 rounded-full border-2 border-white" src="https://randomuser.me/api/portraits/women/33.jpg" alt="">
+									<img class="size-6 rounded-full border-2 border-white" src="https://randomuser.me/api/portraits/men/44.jpg" alt="">
+								</div>
+							</div>
+						</div>
+
+						<div class="bg-card p-5 rounded-2xl border border-border shadow-sm">
+							<div class="flex items-start gap-4 mb-4">
+								<div class="size-14 bg-green-50 rounded-xl flex items-center justify-center shrink-0">
+									<iconify-icon icon="logos:spotify-icon" class="size-8"></iconify-icon>
+								</div>
+								<div class="flex-1">
+									<h3 class="font-bold text-lg text-foreground">Spotify</h3>
+									<p class="text-sm text-muted-foreground">Music • Remote</p>
+									<div class="flex items-center gap-1 mt-1">
+										<iconify-icon icon="solar:star-bold" class="size-3.5 text-yellow-400"></iconify-icon>
+										<span class="text-xs font-bold text-foreground">4.7</span>
+										<span class="text-xs text-muted-foreground">(1.5k reviews)</span>
+									</div>
+								</div>
+								<button class="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-xl">Follow</button>
+							</div>
+							<div class="flex items-center justify-between pt-3 border-t border-dashed border-border">
+								<span class="text-xs font-medium text-muted-foreground">15 Open Positions</span>
+								<div class="flex -space-x-2">
+									<img class="size-6 rounded-full border-2 border-white" src="https://randomuser.me/api/portraits/men/15.jpg" alt="">
+									<img class="size-6 rounded-full border-2 border-white" src="https://randomuser.me/api/portraits/women/25.jpg" alt="">
+									<div class="size-6 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[8px] font-bold text-muted-foreground">+8</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="fixed bottom-0 left-0 right-0 bg-white border-t border-border h-20 pb-2 z-50 px-6">
+				<div class="flex justify-between items-center h-full">
+					<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-muted-foreground hover:text-foreground">
+						<iconify-icon icon="solar:home-2-linear" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-medium">Home</span>
+					</button>
+					<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-primary">
+						<iconify-icon icon="solar:magnifer-bold" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-bold">Search</span>
+					</button>
+					<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-muted-foreground hover:text-foreground">
+						<iconify-icon icon="solar:document-text-linear" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-medium">Applications</span>
+					</button>
+					<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-muted-foreground hover:text-foreground">
+						<iconify-icon icon="solar:user-linear" class="size-6"></iconify-icon>
+						<span class="text-[10px] font-medium">Profile</span>
+					</button>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>
