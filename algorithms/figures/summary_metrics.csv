@@ -1,0 +1,5 @@
+model,alpha,precision_at_10,recall_at_10
+tfidf,,0.0012,0.006
+lightfm,,0.0046,0.023
+hybrid_alpha_0.6,0.6,0.0019,0.0095
+hybrid_best_alpha,0.3,0.00475,0.02375
