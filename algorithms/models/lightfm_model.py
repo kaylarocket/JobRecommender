@@ -1,8 +1,5 @@
 """
-Model building blocks for the hybrid recommender:
-- TF-IDF representations and cosine similarity
-- LightFM collaborative filtering with optional user/item features
-- Hybrid score computation
+LightFM collaborative filtering helpers.
 """
 
 from __future__ import annotations
@@ -11,52 +8,11 @@ from typing import Iterable, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import minmax_scale
-
 from lightfm import LightFM
 from lightfm.data import Dataset
 
 
-def build_tfidf_representations(
-    users: pd.DataFrame,
-    jobs: pd.DataFrame,
-    max_features: int = 20000,
-    ngram_range: Tuple[int, int] = (1, 2),
-    stop_words: Optional[str] = "english",
-):
-    """
-    Vectorize job_text + user_text jointly to place them in the same TF-IDF space.
-    """
-    corpus = jobs["job_text"].tolist() + users["user_text"].tolist()
-
-    vectorizer = TfidfVectorizer(
-        max_features=max_features,
-        ngram_range=ngram_range,
-        stop_words=stop_words,
-    )
-    tfidf_matrix = vectorizer.fit_transform(corpus)
-
-    n_jobs = len(jobs)
-    job_tfidf = tfidf_matrix[:n_jobs]
-    user_tfidf = tfidf_matrix[n_jobs:]
-
-    return vectorizer, job_tfidf, user_tfidf
-
-
-def compute_content_scores_for_user(
-    user_idx: int,
-    job_tfidf,
-    user_tfidf,
-) -> np.ndarray:
-    """
-    Compute cosine similarity between a user's TF-IDF vector and all job vectors.
-    """
-    return cosine_similarity(user_tfidf[user_idx], job_tfidf).ravel()
-
-
-def _extract_feature_vocab(feature_tuples: Sequence[Tuple[str, Sequence[str]]]) -> list[str]:
+def _extract_feature_vocab(feature_tuples: Sequence[Tuple[str, Iterable[str]]]) -> list[str]:
     vocab = set()
     for _, feats in feature_tuples:
         vocab.update(str(f) for f in feats)
@@ -86,15 +42,6 @@ def build_lightfm_dataset(
 ) -> Tuple[Dataset, object, object, Optional[object], Optional[object]]:
     """
     Build a LightFM Dataset along with interaction and optional feature matrices.
-
-    Parameters
-    ----------
-    interactions_df : pd.DataFrame
-        Must contain columns user_id, job_id, weight.
-    user_features : pd.DataFrame, optional
-        DataFrame with columns user_id and features (iterable or string).
-    item_features : pd.DataFrame, optional
-        DataFrame with columns job_id and features (iterable or string).
     """
     user_feature_tuples: Optional[list[Tuple[str, list[str]]]] = None
     item_feature_tuples: Optional[list[Tuple[str, list[str]]]] = None
@@ -188,20 +135,8 @@ def predict_lightfm_scores_for_user(
     return scores
 
 
-def compute_hybrid_scores(
-    content_scores: np.ndarray,
-    lfm_scores: np.ndarray,
-    alpha: float = 0.5,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Blend normalized content and LightFM scores using weight alpha.
-    """
-    if len(content_scores) != len(lfm_scores):
-        raise ValueError("content_scores and lfm_scores must have equal length.")
-
-    content_norm = minmax_scale(content_scores) if len(content_scores) > 1 else content_scores
-    lfm_norm = minmax_scale(lfm_scores) if len(lfm_scores) > 1 else lfm_scores
-
-    hybrid = alpha * content_norm + (1 - alpha) * lfm_norm
-    return hybrid, content_norm, lfm_norm
-
+__all__ = [
+    "build_lightfm_dataset",
+    "train_lightfm",
+    "predict_lightfm_scores_for_user",
+]

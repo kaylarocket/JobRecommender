@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Tuple
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 
@@ -23,65 +24,72 @@ def resolve_data_paths() -> Tuple[Path, Path]:
 
 
 def select_best_alpha(alpha_df: pd.DataFrame) -> pd.Series:
-    """
-    Select the best alpha.
-
-    Primary: max NDCG@10 (ndcg_at_k)
-    Tie-breaker: max Recall@10 (recall_at_k), then Precision@10 (precision_at_k)
-
-    If ndcg_at_k is missing (older CSV), falls back to max recall, then precision.
-    """
-    sort_cols = ["recall_at_k", "precision_at_k"]
-    if "ndcg_at_k" in alpha_df.columns:
-        sort_cols = ["ndcg_at_k"] + sort_cols
-    sorted_df = alpha_df.sort_values(sort_cols, ascending=False)
-    return sorted_df.iloc[0]
+    sort_cols = ["ndcg_at_k", "recall_at_k", "precision_at_k"]
+    return alpha_df.sort_values(sort_cols, ascending=False).iloc[0]
 
 
-def plot_baseline_comparison(eval_df: pd.DataFrame, output_path: Path) -> None:
-    models = ["tfidf", "lightfm", "hybrid_alpha_0.6"]
-    subset = eval_df.set_index("model").loc[models]
-    x = range(len(models))
-    has_ndcg = "ndcg_at_k" in subset.columns
-    width = 0.25 if has_ndcg else 0.35
+def select_best_baseline(eval_df: pd.DataFrame) -> pd.Series:
+    baselines = eval_df[~eval_df["model"].str.startswith("hybrid")]
+    if baselines.empty:
+        raise ValueError("No baseline models found in evaluation_results.csv.")
+    sort_cols = ["ndcg_at_k", "recall_at_k", "precision_at_k"]
+    return baselines.sort_values(sort_cols, ascending=False).iloc[0]
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    if has_ndcg:
-        ax.bar([i - width for i in x], subset["precision_at_k"], width, label="Precision@10")
-        ax.bar([i for i in x], subset["recall_at_k"], width, label="Recall@10")
-        ax.bar([i + width for i in x], subset["ndcg_at_k"], width, label="NDCG@10")
-        title = "Baseline Model Performance @10 (Precision, Recall, NDCG)"
-    else:
-        ax.bar([i - width / 2 for i in x], subset["precision_at_k"], width, label="Precision@10")
-        ax.bar([i + width / 2 for i in x], subset["recall_at_k"], width, label="Recall@10")
-        title = "Baseline Model Performance @10 (Precision, Recall)"
+
+def extract_best_hybrid(eval_df: pd.DataFrame, alpha_df: pd.DataFrame) -> pd.Series:
+    if "hybrid_best_alpha" in eval_df["model"].values:
+        row = eval_df.loc[eval_df["model"] == "hybrid_best_alpha"].iloc[0].copy()
+        row["alpha"] = select_best_alpha(alpha_df)["alpha"]
+        return row
+    best_alpha = select_best_alpha(alpha_df)
+    return pd.Series(
+        {
+            "model": "hybrid_best_alpha",
+            "precision_at_k": best_alpha["precision_at_k"],
+            "recall_at_k": best_alpha["recall_at_k"],
+            "ndcg_at_k": best_alpha["ndcg_at_k"],
+            "alpha": best_alpha["alpha"],
+        }
+    )
+
+
+def plot_model_comparison(eval_df: pd.DataFrame, output_path: Path) -> None:
+    eval_df = eval_df.copy()
+    eval_df["is_hybrid"] = eval_df["model"].str.startswith("hybrid")
+    eval_df = eval_df.sort_values(["is_hybrid", "model"])
+
+    models = eval_df["model"].tolist()
+    x = np.arange(len(models))
+    width = 0.25
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(x - width, eval_df["precision_at_k"], width, label="Precision@10")
+    ax.bar(x, eval_df["recall_at_k"], width, label="Recall@10")
+    ax.bar(x + width, eval_df["ndcg_at_k"], width, label="NDCG@10")
 
     ax.set_xlabel("Model")
     ax.set_ylabel("Score")
-    ax.set_title(title)
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(models)
+    ax.set_title("Model Comparison @10 (all evaluated models)")
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=20, ha="right")
     ax.legend()
-    ax.grid(axis="y", linestyle="--", alpha=0.5)
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
     fig.tight_layout()
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
 def plot_alpha_sweep(alpha_df: pd.DataFrame, best_row: pd.Series, output_path: Path) -> None:
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(9, 5))
     ax.plot(alpha_df["alpha"], alpha_df["precision_at_k"], marker="o", label="Precision@10")
     ax.plot(alpha_df["alpha"], alpha_df["recall_at_k"], marker="s", label="Recall@10")
-    has_ndcg = "ndcg_at_k" in alpha_df.columns
-    if has_ndcg:
-        ax.plot(alpha_df["alpha"], alpha_df["ndcg_at_k"], marker="^", label="NDCG@10")
+    ax.plot(alpha_df["alpha"], alpha_df["ndcg_at_k"], marker="^", label="NDCG@10")
 
-    best_y = best_row["ndcg_at_k"] if has_ndcg else best_row["recall_at_k"]
-    best_label = "Best α (NDCG@10)" if has_ndcg else "Best α (Recall@10)"
-    ax.scatter(best_row["alpha"], best_y, color="red", zorder=5, label=best_label)
+    ax.scatter(best_row["alpha"], best_row["ndcg_at_k"], color="red", zorder=5, label="Best α (NDCG@10)")
+    ax.axvline(best_row["alpha"], color="red", linestyle="--", alpha=0.5)
     ax.annotate(
         f"Best α = {best_row['alpha']:.2f}",
-        (best_row["alpha"], best_y),
+        (best_row["alpha"], best_row["ndcg_at_k"]),
         xytext=(10, 10),
         textcoords="offset points",
         ha="left",
@@ -94,58 +102,72 @@ def plot_alpha_sweep(alpha_df: pd.DataFrame, best_row: pd.Series, output_path: P
     ax.set_ylabel("Score")
     ax.set_title("Hybrid Alpha Sweep @10")
     ax.legend()
-    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.grid(True, linestyle="--", alpha=0.4)
     fig.tight_layout()
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
-def plot_best_vs_baselines(comparison_df: pd.DataFrame, output_path: Path) -> None:
-    models = comparison_df["model"].tolist()
-    x = range(len(models))
-    width = 0.35
+def plot_best_vs_baselines(eval_df: pd.DataFrame, best_hybrid: pd.Series, output_path: Path) -> None:
+    baselines = eval_df[~eval_df["model"].str.startswith("hybrid")].copy()
+    baselines["is_best_baseline"] = False
+    best_baseline = select_best_baseline(eval_df)
+    baselines.loc[baselines["model"] == best_baseline["model"], "is_best_baseline"] = True
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.bar([i - width / 2 for i in x], comparison_df["precision_at_k"], width, label="Precision@10")
-    ax.bar([i + width / 2 for i in x], comparison_df["recall_at_k"], width, label="Recall@10")
+    comparison_df = pd.concat([baselines, best_hybrid.to_frame().T], ignore_index=True)
+    comparison_df["is_hybrid"] = comparison_df["model"].str.startswith("hybrid")
+
+    models = comparison_df["model"].tolist()
+    x = np.arange(len(models))
+    width = 0.25
+
+    colors = ["#4C72B0" if not row.is_hybrid else "#C44E52" for row in comparison_df.itertuples()]
+    hatches = ["//" if getattr(row, "is_best_baseline", False) else "" for row in comparison_df.itertuples()]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    bars_prec = ax.bar(x - width, comparison_df["precision_at_k"], width, color=colors, hatch=hatches, label="Precision@10")
+    bars_rec = ax.bar(x, comparison_df["recall_at_k"], width, color=colors, hatch=hatches, label="Recall@10")
+    bars_ndcg = ax.bar(x + width, comparison_df["ndcg_at_k"], width, color=colors, hatch=hatches, label="NDCG@10")
 
     ax.set_xlabel("Model")
     ax.set_ylabel("Score")
-    ax.set_title("Best Hybrid vs Baselines (Precision/Recall @10)")
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(models)
+    ax.set_title("Best Hybrid vs Baselines (highlighting strongest baseline)")
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=20, ha="right")
     ax.legend()
-    ax.grid(axis="y", linestyle="--", alpha=0.5)
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
+
+    # Annotate bars for quick reading
+    for bars in [bars_prec, bars_rec, bars_ndcg]:
+        for bar in bars:
+            ax.annotate(
+                f"{bar.get_height():.3f}",
+                xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                xytext=(0, 3),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+
     fig.tight_layout()
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
-def plot_deltas(best_row: pd.Series, tfidf_row: pd.Series, lightfm_row: pd.Series, output_path: Path) -> None:
-    categories = [
-        "ΔPrecision@10 vs TF-IDF",
-        "ΔRecall@10 vs TF-IDF",
-        "ΔPrecision@10 vs LightFM",
-        "ΔRecall@10 vs LightFM",
-    ]
-    deltas = [
-        best_row["precision_at_k"] - tfidf_row["precision_at_k"],
-        best_row["recall_at_k"] - tfidf_row["recall_at_k"],
-        best_row["precision_at_k"] - lightfm_row["precision_at_k"],
-        best_row["recall_at_k"] - lightfm_row["recall_at_k"],
-    ]
+def plot_deltas(best_hybrid: pd.Series, best_baseline: pd.Series, output_path: Path) -> None:
+    metrics = ["precision_at_k", "recall_at_k", "ndcg_at_k"]
+    categories = [m.replace("_at_k", "").upper() for m in metrics]
+    deltas = [best_hybrid[m] - best_baseline[m] for m in metrics]
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    bars = ax.bar(categories, deltas, color="#4C72B0")
+    bars = ax.bar(categories, deltas, color="#55A868")
     ax.axhline(0, color="black", linewidth=1)
 
-    ax.set_ylabel("Delta")
-    ax.set_title("Hybrid (Best α) Improvement Over Baselines")
-    ax.set_xticks(range(len(categories)))
-    ax.set_xticklabels(categories, rotation=15, ha="right")
-    ax.grid(axis="y", linestyle="--", alpha=0.5)
+    ax.set_ylabel("Hybrid - Best Baseline")
+    ax.set_title("Delta of Best Hybrid vs Strongest Baseline")
+    ax.grid(axis="y", linestyle="--", alpha=0.4)
 
-    # Label bars with delta values for quick reading.
     for bar, delta in zip(bars, deltas):
         ax.annotate(
             f"{delta:.4f}",
@@ -162,41 +184,29 @@ def plot_deltas(best_row: pd.Series, tfidf_row: pd.Series, lightfm_row: pd.Serie
     plt.close(fig)
 
 
-def build_summary_metrics(eval_df: pd.DataFrame, best_row: pd.Series) -> pd.DataFrame:
-    eval_indexed = eval_df.set_index("model")
-    eval_has_ndcg = "ndcg_at_k" in eval_indexed.columns
-    best_has_ndcg = "ndcg_at_k" in best_row.index
-    rows = [
-        {
-            "model": "tfidf",
-            "alpha": pd.NA,
-            "precision_at_10": eval_indexed.loc["tfidf", "precision_at_k"],
-            "recall_at_10": eval_indexed.loc["tfidf", "recall_at_k"],
-            "ndcg_at_10": eval_indexed.loc["tfidf", "ndcg_at_k"] if eval_has_ndcg else pd.NA,
-        },
-        {
-            "model": "lightfm",
-            "alpha": pd.NA,
-            "precision_at_10": eval_indexed.loc["lightfm", "precision_at_k"],
-            "recall_at_10": eval_indexed.loc["lightfm", "recall_at_k"],
-            "ndcg_at_10": eval_indexed.loc["lightfm", "ndcg_at_k"] if eval_has_ndcg else pd.NA,
-        },
-        {
-            "model": "hybrid_alpha_0.6",
-            "alpha": 0.6,
-            "precision_at_10": eval_indexed.loc["hybrid_alpha_0.6", "precision_at_k"],
-            "recall_at_10": eval_indexed.loc["hybrid_alpha_0.6", "recall_at_k"],
-            "ndcg_at_10": eval_indexed.loc["hybrid_alpha_0.6", "ndcg_at_k"] if eval_has_ndcg else pd.NA,
-        },
-        {
-            "model": "hybrid_best_alpha",
-            "alpha": best_row["alpha"],
-            "precision_at_10": best_row["precision_at_k"],
-            "recall_at_10": best_row["recall_at_k"],
-            "ndcg_at_10": best_row["ndcg_at_k"] if best_has_ndcg else pd.NA,
-        },
-    ]
-    return pd.DataFrame(rows)
+def build_summary_metrics(eval_df: pd.DataFrame, best_hybrid: pd.Series, best_baseline: pd.Series) -> pd.DataFrame:
+    def _alpha_for_model(model_name: str) -> float | pd.NA:
+        if model_name.startswith("hybrid_alpha_"):
+            try:
+                return float(model_name.split("_")[-1])
+            except ValueError:
+                return pd.NA
+        if model_name == "hybrid_best_alpha":
+            return best_hybrid.get("alpha", pd.NA)
+        return pd.NA
+
+    df = eval_df.copy()
+    df["alpha"] = df["model"].apply(_alpha_for_model)
+
+    if "alpha" not in best_hybrid:
+        best_hybrid = best_hybrid.copy()
+        best_hybrid["alpha"] = pd.NA
+
+    if "alpha" not in best_baseline:
+        best_baseline = best_baseline.copy()
+        best_baseline["alpha"] = pd.NA
+
+    return pd.concat([df, best_hybrid.to_frame().T, best_baseline.to_frame().T], ignore_index=True).drop_duplicates(subset=["model"])
 
 
 def main() -> None:
@@ -204,26 +214,12 @@ def main() -> None:
     figures_dir = Path(__file__).resolve().parent / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading evaluation results from: {eval_path}")
-    print(f"Loading alpha tuning results from: {alpha_path}")
-
     eval_df = pd.read_csv(eval_path)
     alpha_df = pd.read_csv(alpha_path)
 
-    best_row = select_best_alpha(alpha_df)
-    has_ndcg = "ndcg_at_k" in alpha_df.columns
-    if has_ndcg:
-        print("Best alpha selection: max NDCG@10, tie-breaker Recall@10, then Precision@10.")
-        print(
-            f"Best alpha: {best_row['alpha']:.2f} "
-            f"(NDCG@10={best_row['ndcg_at_k']:.4f}, Precision@10={best_row['precision_at_k']:.4f}, Recall@10={best_row['recall_at_k']:.4f})"
-        )
-    else:
-        print("Best alpha selection (fallback): max Recall@10, tie-breaker Precision@10. (ndcg_at_k missing in CSV)")
-        print(
-            f"Best alpha: {best_row['alpha']:.2f} "
-            f"(Precision@10={best_row['precision_at_k']:.4f}, Recall@10={best_row['recall_at_k']:.4f})"
-        )
+    best_alpha_row = select_best_alpha(alpha_df)
+    best_hybrid_row = extract_best_hybrid(eval_df, alpha_df)
+    best_baseline_row = select_best_baseline(eval_df)
 
     graph1_path = figures_dir / "graph1_baseline_comparison.png"
     graph2_path = figures_dir / "graph2_alpha_sweep.png"
@@ -231,29 +227,12 @@ def main() -> None:
     graph4_path = figures_dir / "graph4_delta_vs_baselines.png"
     summary_path = figures_dir / "summary_metrics.csv"
 
-    plot_baseline_comparison(eval_df, graph1_path)
-    plot_alpha_sweep(alpha_df, best_row, graph2_path)
+    plot_model_comparison(eval_df, graph1_path)
+    plot_alpha_sweep(alpha_df, best_alpha_row, graph2_path)
+    plot_best_vs_baselines(eval_df, best_hybrid_row, graph3_path)
+    plot_deltas(best_hybrid_row, best_baseline_row, graph4_path)
 
-    eval_indexed = eval_df.set_index("model")
-    comparison_df = pd.DataFrame(
-        {
-            "model": ["tfidf", "lightfm", "hybrid_best_alpha"],
-            "precision_at_k": [
-                eval_indexed.loc["tfidf", "precision_at_k"],
-                eval_indexed.loc["lightfm", "precision_at_k"],
-                best_row["precision_at_k"],
-            ],
-            "recall_at_k": [
-                eval_indexed.loc["tfidf", "recall_at_k"],
-                eval_indexed.loc["lightfm", "recall_at_k"],
-                best_row["recall_at_k"],
-            ],
-        }
-    )
-    plot_best_vs_baselines(comparison_df, graph3_path)
-    plot_deltas(best_row, eval_indexed.loc["tfidf"], eval_indexed.loc["lightfm"], graph4_path)
-
-    summary_df = build_summary_metrics(eval_df, best_row)
+    summary_df = build_summary_metrics(eval_df, best_hybrid_row, best_baseline_row)
     summary_df.to_csv(summary_path, index=False)
 
     print("Saved figures and summary:")

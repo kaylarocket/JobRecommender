@@ -1,26 +1,19 @@
 """
-Evaluation pipeline for the hybrid recommender.
-Performs train/test split on synthetic interactions, computes precision/recall
-for TF-IDF, LightFM, and hybrid models, and sweeps alpha values.
+Evaluation pipeline for comparing TF-IDF, SBERT, LightFM, NCF, and Hybrid recommenders.
 
 README:
-- Run: python evaluate_models.py
-- Outputs evaluation_results.csv and alpha_tuning_results.csv to guide alpha selection.
-- Mirrors the same TF-IDF + LightFM scoring that feeds the FastAPI service.
+- Run evaluations: python3 evaluate_models.py
+- Plot thesis figures: python3 algorithms/analysis/plot_results.py
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Set, Tuple
+import random
 from pathlib import Path
-
+from typing import Dict, Iterable, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
-import math
-
-OUT_DIR = Path(__file__).resolve().parents[1] / "data"
-
 
 from algorithms.core.data_loading import (
     MAX_JOBS,
@@ -31,19 +24,39 @@ from algorithms.core.data_loading import (
     load_applicants_dataset,
     load_jobstreet_job_dataset,
 )
-from algorithms.core.models import (
+from algorithms.core.metrics import mean, ndcg_at_k, precision_at_k, recall_at_k
+from algorithms.core.registry import register_model
+from algorithms.models.hybrid_model import compute_hybrid_scores
+from algorithms.models.lightfm_model import (
     build_lightfm_dataset,
-    build_tfidf_representations,
-    compute_content_scores_for_user,
-    compute_hybrid_scores,
     predict_lightfm_scores_for_user,
     train_lightfm,
+)
+from algorithms.models.ncf_model import (
+    build_ncf_training_data,
+    predict_ncf_scores_for_user,
+    train_ncf_model,
+)
+from algorithms.models.sbert_model import (
+    build_sbert_representations,
+    compute_sbert_scores_for_user,
+)
+from algorithms.models.tfidf_model import (
+    build_tfidf_representations,
+    compute_content_scores_for_user,
 )
 
 TEST_SIZE = 0.2
 TOP_K = 10
 DEFAULT_ALPHA = 0.6
 ALPHAS = [0.0, 0.3, 0.5, 0.7, 1.0]
+
+OUT_DIR = Path(__file__).resolve().parents[1] / "data"
+
+
+def set_seed(seed: int = 42) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 def train_test_split_interactions(
@@ -74,47 +87,6 @@ def train_test_split_interactions(
     return train_df, test_df
 
 
-def precision_at_k(predicted: List[str], actual: Set[str], k: int) -> float:
-    if k == 0:
-        return 0.0
-    hits = len(set(predicted[:k]) & actual)
-    return hits / float(k)
-
-
-def recall_at_k(predicted: List[str], actual: Set[str], k: int) -> float:
-    if len(actual) == 0:
-        return 0.0
-    hits = len(set(predicted[:k]) & actual)
-    return hits / float(len(actual))
-
-
-def dcg_at_k(predicted: List[str], actual: Set[str], k: int) -> float:
-    """
-    Discounted Cumulative Gain @k with binary relevance.
-    rel_i = 1 if predicted[i] in actual else 0, i starting at 1.
-    """
-    dcg = 0.0
-    for rank, item_id in enumerate(predicted[:k], start=1):
-        rel = 1.0 if item_id in actual else 0.0
-        dcg += rel / math.log2(rank + 1)
-    return dcg
-
-
-def ndcg_at_k(predicted: List[str], actual: Set[str], k: int) -> float:
-    """
-    Normalized DCG @k with binary relevance.
-    IDCG is the DCG of a perfect ranking with min(len(actual), k) hits at the top.
-    Returns 0.0 if actual is empty.
-    """
-    if len(actual) == 0 or k == 0:
-        return 0.0
-    ideal_hits = min(len(actual), k)
-    idcg = sum(1.0 / math.log2(rank + 1) for rank in range(1, ideal_hits + 1))
-    if idcg == 0.0:
-        return 0.0
-    return dcg_at_k(predicted, actual, k) / idcg
-
-
 def _rank_jobs(
     scores: np.ndarray,
     jobs: pd.DataFrame,
@@ -132,37 +104,109 @@ def _rank_jobs(
     return ranked_ids[:top_k]
 
 
-def evaluate_models(
-    users: pd.DataFrame,
-    jobs: pd.DataFrame,
+def _empty_metric_store(names: Iterable[str], alphas: Iterable[float]):
+    metrics: Dict[str, Dict[str, List[float]]] = {
+        name: {"precision": [], "recall": [], "ndcg": []} for name in names
+    }
+    alpha_metrics: Dict[float, Dict[str, List[float]]] = {
+        alpha: {"precision": [], "recall": [], "ndcg": []} for alpha in alphas
+    }
+    return metrics, alpha_metrics
+
+
+def _update_metric(
+    store: Dict[str, List[float]],
+    predicted: List[str],
+    actual: Set[str],
+    k: int,
+) -> None:
+    store["precision"].append(precision_at_k(predicted, actual, k))
+    store["recall"].append(recall_at_k(predicted, actual, k))
+    store["ndcg"].append(ndcg_at_k(predicted, actual, k))
+
+
+def _build_score_registry(
     job_tfidf,
     user_tfidf,
-    model,
-    dataset,
+    job_sbert: np.ndarray,
+    user_sbert: np.ndarray,
+    lfm_model,
+    lfm_dataset,
+    lfm_jobs: pd.DataFrame,
+    user_features_matrix,
+    item_features_matrix,
+    ncf_model,
+    ncf_user_index: Dict[str, int],
+    ncf_job_index: Dict[str, int],
+) -> Dict[str, callable]:
+    """
+    Register scoring functions for each model to keep evaluation declarative.
+    """
+    scorers = {
+        "tfidf": lambda user_id, user_idx: compute_content_scores_for_user(user_idx, job_tfidf, user_tfidf),
+        "sbert": lambda user_id, user_idx: compute_sbert_scores_for_user(user_idx, job_sbert, user_sbert),
+        "lightfm": lambda user_id, user_idx: predict_lightfm_scores_for_user(
+            user_id=user_id,
+            model=lfm_model,
+            dataset=lfm_dataset,
+            jobs=lfm_jobs,
+            user_features=user_features_matrix,
+            item_features=item_features_matrix,
+        ),
+        "ncf": lambda user_id, user_idx: predict_ncf_scores_for_user(
+            user_id=user_id,
+            model=ncf_model,
+            job_index=ncf_job_index,
+            user_index=ncf_user_index,
+            n_items=len(lfm_jobs),
+        ),
+    }
+    for name, fn in scorers.items():
+        register_model(name, fn)
+    return scorers
+
+
+def evaluate_all_models(
+    users: pd.DataFrame,
+    jobs: pd.DataFrame,
     train_interactions: pd.DataFrame,
     test_interactions: pd.DataFrame,
-    user_features_matrix=None,
-    item_features_matrix=None,
-    alpha: float = DEFAULT_ALPHA,
-    top_k: int = TOP_K,
-) -> Dict[str, float]:
-    """
-    Compute mean precision/recall for TF-IDF, LightFM, and hybrid models.
-    """
+    job_tfidf,
+    user_tfidf,
+    job_sbert: np.ndarray,
+    user_sbert: np.ndarray,
+    lfm_model,
+    lfm_dataset,
+    user_features_matrix,
+    item_features_matrix,
+    ncf_model,
+    ncf_user_index: Dict[str, int],
+    ncf_job_index: Dict[str, int],
+    alphas: List[float],
+    top_k: int,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     job_index = {jid: idx for idx, jid in enumerate(jobs["job_id"])}
     user_index = {uid: idx for idx, uid in enumerate(users["user_id"])}
 
-    content_precisions: List[float] = []
-    lfm_precisions: List[float] = []
-    hybrid_precisions: List[float] = []
+    metrics, alpha_metrics = _empty_metric_store(
+        names=["tfidf", "sbert", "lightfm", "ncf", f"hybrid_alpha_{DEFAULT_ALPHA}"],
+        alphas=alphas,
+    )
 
-    content_recalls: List[float] = []
-    lfm_recalls: List[float] = []
-    hybrid_recalls: List[float] = []
-
-    content_ndcgs: List[float] = []
-    lfm_ndcgs: List[float] = []
-    hybrid_ndcgs: List[float] = []
+    scorers = _build_score_registry(
+        job_tfidf=job_tfidf,
+        user_tfidf=user_tfidf,
+        job_sbert=job_sbert,
+        user_sbert=user_sbert,
+        lfm_model=lfm_model,
+        lfm_dataset=lfm_dataset,
+        lfm_jobs=jobs,
+        user_features_matrix=user_features_matrix,
+        item_features_matrix=item_features_matrix,
+        ncf_model=ncf_model,
+        ncf_user_index=ncf_user_index,
+        ncf_job_index=ncf_job_index,
+    )
 
     for user_id, group in test_interactions.groupby("user_id"):
         ground_truth = set(group["job_id"])
@@ -172,100 +216,80 @@ def evaluate_models(
         train_seen = set(train_interactions.loc[train_interactions["user_id"] == user_id, "job_id"])
         uidx = user_index[user_id]
 
-        content_scores = compute_content_scores_for_user(uidx, job_tfidf, user_tfidf)
-        lfm_scores = predict_lightfm_scores_for_user(
-            user_id=user_id,
-            model=model,
-            dataset=dataset,
-            jobs=jobs,
-            user_features=user_features_matrix,
-            item_features=item_features_matrix,
-        )
+        tfidf_scores = scorers["tfidf"](user_id, uidx)
+        sbert_scores = scorers["sbert"](user_id, uidx)
+        lfm_scores = scorers["lightfm"](user_id, uidx)
+        ncf_scores = scorers["ncf"](user_id, uidx)
 
-        hybrid_scores, content_norm, lfm_norm = compute_hybrid_scores(
-            content_scores=content_scores,
+        hybrid_scores_default, content_norm, lfm_norm = compute_hybrid_scores(
+            content_scores=tfidf_scores,
             lfm_scores=lfm_scores,
-            alpha=alpha,
+            alpha=DEFAULT_ALPHA,
         )
 
-        content_ranked = _rank_jobs(content_norm, jobs, job_index, train_seen, top_k)
+        tfidf_ranked = _rank_jobs(content_norm, jobs, job_index, train_seen, top_k)
+        sbert_ranked = _rank_jobs(sbert_scores, jobs, job_index, train_seen, top_k)
         lfm_ranked = _rank_jobs(lfm_norm, jobs, job_index, train_seen, top_k)
-        hybrid_ranked = _rank_jobs(hybrid_scores, jobs, job_index, train_seen, top_k)
+        ncf_ranked = _rank_jobs(ncf_scores, jobs, job_index, train_seen, top_k)
+        hybrid_ranked = _rank_jobs(hybrid_scores_default, jobs, job_index, train_seen, top_k)
 
-        content_precisions.append(precision_at_k(content_ranked, ground_truth, top_k))
-        lfm_precisions.append(precision_at_k(lfm_ranked, ground_truth, top_k))
-        hybrid_precisions.append(precision_at_k(hybrid_ranked, ground_truth, top_k))
+        _update_metric(metrics["tfidf"], tfidf_ranked, ground_truth, top_k)
+        _update_metric(metrics["sbert"], sbert_ranked, ground_truth, top_k)
+        _update_metric(metrics["lightfm"], lfm_ranked, ground_truth, top_k)
+        _update_metric(metrics["ncf"], ncf_ranked, ground_truth, top_k)
+        _update_metric(metrics[f"hybrid_alpha_{DEFAULT_ALPHA}"], hybrid_ranked, ground_truth, top_k)
 
-        content_recalls.append(recall_at_k(content_ranked, ground_truth, top_k))
-        lfm_recalls.append(recall_at_k(lfm_ranked, ground_truth, top_k))
-        hybrid_recalls.append(recall_at_k(hybrid_ranked, ground_truth, top_k))
+        for alpha in alphas:
+            hybrid_scores = alpha * content_norm + (1 - alpha) * lfm_norm
+            hybrid_ranked_alpha = _rank_jobs(hybrid_scores, jobs, job_index, train_seen, top_k)
+            _update_metric(alpha_metrics[alpha], hybrid_ranked_alpha, ground_truth, top_k)
 
-        content_ndcgs.append(ndcg_at_k(content_ranked, ground_truth, top_k))
-        lfm_ndcgs.append(ndcg_at_k(lfm_ranked, ground_truth, top_k))
-        hybrid_ndcgs.append(ndcg_at_k(hybrid_ranked, ground_truth, top_k))
-
-    def _mean(values: List[float]) -> float:
-        return float(np.mean(values)) if values else 0.0
-
-    return {
-        "tfidf_precision": _mean(content_precisions),
-        "tfidf_recall": _mean(content_recalls),
-        "tfidf_ndcg": _mean(content_ndcgs),
-        "lightfm_precision": _mean(lfm_precisions),
-        "lightfm_recall": _mean(lfm_recalls),
-        "lightfm_ndcg": _mean(lfm_ndcgs),
-        "hybrid_precision": _mean(hybrid_precisions),
-        "hybrid_recall": _mean(hybrid_recalls),
-        "hybrid_ndcg": _mean(hybrid_ndcgs),
-    }
-
-
-def evaluate_alpha_sweep(
-    alphas: List[float],
-    users: pd.DataFrame,
-    jobs: pd.DataFrame,
-    job_tfidf,
-    user_tfidf,
-    model,
-    dataset,
-    train_interactions: pd.DataFrame,
-    test_interactions: pd.DataFrame,
-    user_features_matrix=None,
-    item_features_matrix=None,
-    top_k: int = TOP_K,
-) -> List[Dict[str, float]]:
-    """
-    Evaluate hybrid model performance across multiple alpha values.
-    """
-    results = []
-    for alpha in alphas:
-        metrics = evaluate_models(
-            users=users,
-            jobs=jobs,
-            job_tfidf=job_tfidf,
-            user_tfidf=user_tfidf,
-            model=model,
-            dataset=dataset,
-            train_interactions=train_interactions,
-            test_interactions=test_interactions,
-            user_features_matrix=user_features_matrix,
-            item_features_matrix=item_features_matrix,
-            alpha=alpha,
-            top_k=top_k,
-        )
-        results.append(
+    eval_rows = []
+    for name, store in metrics.items():
+        eval_rows.append(
             {
-                "alpha": alpha,
-                "precision_at_k": metrics["hybrid_precision"],
-                "recall_at_k": metrics["hybrid_recall"],
-                "ndcg_at_k": metrics["hybrid_ndcg"],
+                "model": name,
+                "precision_at_k": mean(store["precision"]),
+                "recall_at_k": mean(store["recall"]),
+                "ndcg_at_k": mean(store["ndcg"]),
             }
         )
-    return results
+
+    alpha_rows = []
+    for alpha, store in alpha_metrics.items():
+        alpha_rows.append(
+            {
+                "alpha": alpha,
+                "precision_at_k": mean(store["precision"]),
+                "recall_at_k": mean(store["recall"]),
+                "ndcg_at_k": mean(store["ndcg"]),
+            }
+        )
+
+    alpha_df = pd.DataFrame(alpha_rows).sort_values("alpha").reset_index(drop=True)
+    best_alpha_row = select_best_alpha(alpha_df)
+    eval_rows.append(
+        {
+            "model": "hybrid_best_alpha",
+            "precision_at_k": best_alpha_row["precision_at_k"],
+            "recall_at_k": best_alpha_row["recall_at_k"],
+            "ndcg_at_k": best_alpha_row["ndcg_at_k"],
+        }
+    )
+
+    eval_df = pd.DataFrame(eval_rows)
+    return eval_df, alpha_df
 
 
-def main():
-    # 1) Load data
+def select_best_alpha(alpha_df: pd.DataFrame) -> pd.Series:
+    sort_cols = ["ndcg_at_k", "recall_at_k", "precision_at_k"]
+    return alpha_df.sort_values(sort_cols, ascending=False).iloc[0]
+
+
+def main() -> None:
+    set_seed(42)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
     raw_jobs = load_jobstreet_job_dataset()
     raw_applicants = load_applicants_dataset()
 
@@ -278,83 +302,82 @@ def main():
     users = build_user_table(raw_applicants).reset_index(drop=True)
     print(f"Prepared {len(jobs)} jobs and {len(users)} users.")
 
-    # 2) Synthetic interactions and split
     interactions_df = build_synthetic_interactions(users, jobs)
     train_interactions, test_interactions = train_test_split_interactions(interactions_df, test_size=TEST_SIZE)
     print(f"Train interactions: {len(train_interactions)}, Test interactions: {len(test_interactions)}")
 
-    # 3) TF-IDF and LightFM training (train set only)
+    # Content-based models
     _, job_tfidf, user_tfidf = build_tfidf_representations(users, jobs)
+    _, job_sbert, user_sbert = build_sbert_representations(
+        users=users["user_text"].values,
+        jobs=jobs["job_text"].values,
+        seed=42,
+    )
+
+    # LightFM
     dataset, interactions, weights, user_features_matrix, item_features_matrix = build_lightfm_dataset(
         interactions_df=train_interactions,
         users=users,
         jobs=jobs,
     )
-    model = train_lightfm(
+    lfm_model = train_lightfm(
         interactions=interactions,
         weights=weights,
         user_features=user_features_matrix,
         item_features=item_features_matrix,
     )
 
-    # 4) Evaluate baseline models
-    metrics = evaluate_models(
-        users=users,
-        jobs=jobs,
-        job_tfidf=job_tfidf,
-        user_tfidf=user_tfidf,
-        model=model,
-        dataset=dataset,
-        train_interactions=train_interactions,
-        test_interactions=test_interactions,
-        user_features_matrix=user_features_matrix,
-        item_features_matrix=item_features_matrix,
-        alpha=DEFAULT_ALPHA,
-        top_k=TOP_K,
+    # NCF
+    (
+        ncf_user_indices,
+        ncf_item_indices,
+        ncf_labels,
+        ncf_user_index,
+        ncf_job_index,
+    ) = build_ncf_training_data(train_interactions, users, jobs)
+    if len(ncf_labels) == 0:
+        raise ValueError("NCF training data is empty. Check interactions preprocessing.")
+    ncf_model = train_ncf_model(
+        user_indices=ncf_user_indices,
+        item_indices=ncf_item_indices,
+        labels=ncf_labels,
+        n_users=len(users),
+        n_items=len(jobs),
+        epochs=4,
+        embedding_dim=32,
     )
-    eval_df = pd.DataFrame(
-        [
-            {
-                "model": "tfidf",
-                "precision_at_k": metrics["tfidf_precision"],
-                "recall_at_k": metrics["tfidf_recall"],
-                "ndcg_at_k": metrics["tfidf_ndcg"],
-            },
-            {
-                "model": "lightfm",
-                "precision_at_k": metrics["lightfm_precision"],
-                "recall_at_k": metrics["lightfm_recall"],
-                "ndcg_at_k": metrics["lightfm_ndcg"],
-            },
-            {
-                "model": f"hybrid_alpha_{DEFAULT_ALPHA}",
-                "precision_at_k": metrics["hybrid_precision"],
-                "recall_at_k": metrics["hybrid_recall"],
-                "ndcg_at_k": metrics["hybrid_ndcg"],
-            },
-        ]
-    )
-    eval_df.to_csv(OUT_DIR / "evaluation_results.csv", index=False)
-    print("Saved evaluation_results.csv")
 
-    # 5) Alpha sweep
-    alpha_results = evaluate_alpha_sweep(
-        alphas=ALPHAS,
+    alpha_candidates = sorted(set(ALPHAS + [DEFAULT_ALPHA]))
+    eval_df, alpha_df = evaluate_all_models(
         users=users,
         jobs=jobs,
-        job_tfidf=job_tfidf,
-        user_tfidf=user_tfidf,
-        model=model,
-        dataset=dataset,
         train_interactions=train_interactions,
         test_interactions=test_interactions,
+        job_tfidf=job_tfidf,
+        user_tfidf=user_tfidf,
+        job_sbert=job_sbert,
+        user_sbert=user_sbert,
+        lfm_model=lfm_model,
+        lfm_dataset=dataset,
         user_features_matrix=user_features_matrix,
         item_features_matrix=item_features_matrix,
+        ncf_model=ncf_model,
+        ncf_user_index=ncf_user_index,
+        ncf_job_index=ncf_job_index,
+        alphas=alpha_candidates,
         top_k=TOP_K,
     )
-    alpha_df = pd.DataFrame(alpha_results)
-    alpha_df.to_csv(OUT_DIR / "alpha_tuning_results.csv", index=False)
-    print("Saved alpha_tuning_results.csv")
+
+    eval_path = OUT_DIR / "evaluation_results.csv"
+    alpha_path = OUT_DIR / "alpha_tuning_results.csv"
+    eval_df.to_csv(eval_path, index=False)
+    alpha_df.to_csv(alpha_path, index=False)
+
+    best_alpha = select_best_alpha(alpha_df)["alpha"]
+    print("Saved evaluation outputs:")
+    print(f"- {eval_path}")
+    print(f"- {alpha_path}")
+    print(f"Best alpha (by NDCG@{TOP_K}, recall tie-breaker): {best_alpha}")
 
 
 if __name__ == "__main__":
