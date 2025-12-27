@@ -64,10 +64,35 @@ def mean(values: Iterable[float]) -> float:
     return float(np.mean(values_list)) if values_list else 0.0
 
 
+def precision_recall_f1(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
+    """
+    Compute precision, recall, and F1 from counts.
+    """
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+    return precision, recall, f1
+
+
+def minmax_normalize(scores: np.ndarray) -> np.ndarray:
+    """
+    Normalize scores to [0,1]; returns zeros if all scores are identical.
+    """
+    if scores.size == 0:
+        return scores
+    s_min = scores.min()
+    s_max = scores.max()
+    if s_max == s_min:
+        return np.zeros_like(scores, dtype=float)
+    return (scores - s_min) / (s_max - s_min)
+
+
 __all__ = [
     "precision_at_k",
     "recall_at_k",
     "dcg_at_k",
     "ndcg_at_k",
     "mean",
+    "precision_recall_f1",
+    "minmax_normalize",
 ]

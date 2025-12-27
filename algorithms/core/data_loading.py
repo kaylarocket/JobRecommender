@@ -125,7 +125,6 @@ def build_user_table(
     df["target_role"] = df.get(user_target_role_col, "").fillna("").astype(str)
     df["preferred_location"] = df.get(user_preferred_loc_col, "").fillna("").astype(str)
 
-    df["years_token"] = "years_" + df.get(user_years_pro_col, "").fillna("").astype(str)
     df["skill_level_token"] = "skilllvl_" + df.get(user_skill_level_col, "").fillna("").astype(str)
 
     df["user_text"] = (
@@ -134,8 +133,6 @@ def build_user_table(
         + df["degree_text"]
         + " "
         + df["target_role"]
-        + " "
-        + df["years_token"]
         + " "
         + df["skill_level_token"]
     ).str.lower()

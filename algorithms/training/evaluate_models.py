@@ -24,7 +24,14 @@ from algorithms.core.data_loading import (
     load_applicants_dataset,
     load_jobstreet_job_dataset,
 )
-from algorithms.core.metrics import mean, ndcg_at_k, precision_at_k, recall_at_k
+from algorithms.core.metrics import (
+    mean,
+    minmax_normalize,
+    ndcg_at_k,
+    precision_at_k,
+    precision_recall_f1,
+    recall_at_k,
+)
 from algorithms.core.registry import register_model
 from algorithms.models.hybrid_model import compute_hybrid_scores
 from algorithms.models.lightfm_model import (
@@ -50,6 +57,10 @@ TEST_SIZE = 0.2
 TOP_K = 10
 DEFAULT_ALPHA = 0.6
 ALPHAS = [0.0, 0.3, 0.5, 0.7, 1.0]
+
+THRESHOLDS = [i / 100 for i in range(1, 51)]  # 0.01 ... 0.50
+NEGATIVE_SAMPLE_SIZE = 200
+ENABLE_EVAL_FILTERING = False
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -160,6 +171,7 @@ def _build_score_registry(
             user_index=ncf_user_index,
             n_items=len(lfm_jobs),
         ),
+        "random": lambda user_id, user_idx, rng=None: rng.random(len(lfm_jobs)),
     }
     for name, fn in scorers.items():
         register_model(name, fn)
@@ -187,9 +199,10 @@ def evaluate_all_models(
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     job_index = {jid: idx for idx, jid in enumerate(jobs["job_id"])}
     user_index = {uid: idx for idx, uid in enumerate(users["user_id"])}
+    rng = np.random.default_rng(42)
 
     metrics, alpha_metrics = _empty_metric_store(
-        names=["tfidf", "sbert", "lightfm", "ncf", f"hybrid_alpha_{DEFAULT_ALPHA}"],
+        names=["tfidf", "sbert", "lightfm", "ncf", "random", f"hybrid_alpha_{DEFAULT_ALPHA}"],
         alphas=alphas,
     )
 
@@ -220,6 +233,7 @@ def evaluate_all_models(
         sbert_scores = scorers["sbert"](user_id, uidx)
         lfm_scores = scorers["lightfm"](user_id, uidx)
         ncf_scores = scorers["ncf"](user_id, uidx)
+        random_scores = scorers["random"](user_id, uidx, rng=rng)
 
         hybrid_scores_default, content_norm, lfm_norm = compute_hybrid_scores(
             content_scores=tfidf_scores,
@@ -232,11 +246,13 @@ def evaluate_all_models(
         lfm_ranked = _rank_jobs(lfm_norm, jobs, job_index, train_seen, top_k)
         ncf_ranked = _rank_jobs(ncf_scores, jobs, job_index, train_seen, top_k)
         hybrid_ranked = _rank_jobs(hybrid_scores_default, jobs, job_index, train_seen, top_k)
+        random_ranked = _rank_jobs(random_scores, jobs, job_index, train_seen, top_k)
 
         _update_metric(metrics["tfidf"], tfidf_ranked, ground_truth, top_k)
         _update_metric(metrics["sbert"], sbert_ranked, ground_truth, top_k)
         _update_metric(metrics["lightfm"], lfm_ranked, ground_truth, top_k)
         _update_metric(metrics["ncf"], ncf_ranked, ground_truth, top_k)
+        _update_metric(metrics["random"], random_ranked, ground_truth, top_k)
         _update_metric(metrics[f"hybrid_alpha_{DEFAULT_ALPHA}"], hybrid_ranked, ground_truth, top_k)
 
         for alpha in alphas:
@@ -279,6 +295,159 @@ def evaluate_all_models(
 
     eval_df = pd.DataFrame(eval_rows)
     return eval_df, alpha_df
+
+
+def _filter_candidates_for_user(
+    jobs: pd.DataFrame,
+    user_row: pd.Series,
+) -> pd.DataFrame:
+    """
+    Optional evaluation-only filtering to tighten candidate space.
+    """
+    if not ENABLE_EVAL_FILTERING:
+        return jobs
+
+    preferred_location = str(user_row.get("preferred_location", "")).strip().lower()
+    target_role = str(user_row.get("target_role", "")).strip().lower()
+
+    filtered = jobs
+    if preferred_location:
+        mask_loc = filtered["job_location"].str.lower().str.contains(preferred_location, regex=False, na=False)
+        filtered = filtered[mask_loc]
+
+    if filtered.empty and target_role:
+        mask_role = filtered["job_category"].str.lower().str.contains(target_role, regex=False, na=False)
+        filtered = filtered[mask_role]
+
+    return filtered if not filtered.empty else jobs
+
+
+def evaluate_thresholds(
+    users: pd.DataFrame,
+    jobs: pd.DataFrame,
+    train_interactions: pd.DataFrame,
+    test_interactions: pd.DataFrame,
+    job_tfidf,
+    user_tfidf,
+    job_sbert: np.ndarray,
+    user_sbert: np.ndarray,
+    lfm_model,
+    lfm_dataset,
+    user_features_matrix,
+    item_features_matrix,
+    ncf_model,
+    ncf_user_index: Dict[str, int],
+    ncf_job_index: Dict[str, int],
+    thresholds: List[float],
+    negative_sample_size: int,
+    alpha: float,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    job_index = {jid: idx for idx, jid in enumerate(jobs["job_id"])}
+    user_index = {uid: idx for idx, uid in enumerate(users["user_id"])}
+    rng = np.random.default_rng(12345)
+
+    rows = []
+    candidate_sizes: List[int] = []
+
+    for user_id, group in test_interactions.groupby("user_id"):
+        ground_truth = set(group["job_id"])
+        if len(ground_truth) == 0 or user_id not in user_index:
+            continue
+
+        train_seen = set(train_interactions.loc[train_interactions["user_id"] == user_id, "job_id"])
+        uidx = user_index[user_id]
+        user_row = users.iloc[uidx]
+
+        tfidf_scores = compute_content_scores_for_user(uidx, job_tfidf, user_tfidf)
+        sbert_scores = compute_sbert_scores_for_user(uidx, job_sbert, user_sbert)
+        lfm_scores = predict_lightfm_scores_for_user(
+            user_id=user_id,
+            model=lfm_model,
+            dataset=lfm_dataset,
+            jobs=jobs,
+            user_features=user_features_matrix,
+            item_features=item_features_matrix,
+        )
+        ncf_scores = predict_ncf_scores_for_user(
+            user_id=user_id,
+            model=ncf_model,
+            job_index=ncf_job_index,
+            user_index=ncf_user_index,
+            n_items=len(jobs),
+        )
+        random_scores = rng.random(len(jobs))
+
+        hybrid_scores, content_norm, lfm_norm = compute_hybrid_scores(
+            content_scores=tfidf_scores,
+            lfm_scores=lfm_scores,
+            alpha=alpha,
+        )
+
+        candidate_jobs = jobs[~jobs["job_id"].isin(train_seen)]
+        candidate_jobs = _filter_candidates_for_user(candidate_jobs, user_row)
+
+        candidate_pool_ids = set(candidate_jobs["job_id"].tolist()) | ground_truth
+        negatives = list(candidate_pool_ids - ground_truth)
+        n_neg_sample = min(len(negatives), negative_sample_size)
+        sampled_negatives = rng.choice(negatives, size=n_neg_sample, replace=False).tolist() if n_neg_sample > 0 else []
+
+        candidate_ids = list(ground_truth | set(sampled_negatives))
+        candidate_sizes.append(len(candidate_ids))
+        if not candidate_ids:
+            continue
+
+        candidate_ids = [cid for cid in candidate_ids if cid in job_index]
+        candidate_idx = [job_index[cid] for cid in candidate_ids]
+        if not candidate_idx:
+            continue
+
+        positive_mask = np.array([cid in ground_truth for cid in candidate_ids], dtype=bool)
+        n_pos = int(positive_mask.sum())
+        n_neg = len(candidate_ids) - n_pos
+
+        model_scores = {
+            "tfidf": tfidf_scores[candidate_idx],
+            "sbert": sbert_scores[candidate_idx],
+            "lightfm": lfm_scores[candidate_idx],
+            "ncf": ncf_scores[candidate_idx],
+            f"hybrid_alpha_{alpha}": hybrid_scores[candidate_idx],
+            "random": random_scores[candidate_idx],
+        }
+
+        for model_name, scores in model_scores.items():
+            norm_scores = minmax_normalize(np.array(scores, dtype=float))
+            for t in thresholds:
+                preds = norm_scores >= t
+                tp = int(np.logical_and(preds, positive_mask).sum())
+                fp = int((preds & ~positive_mask).sum())
+                fn = int((~preds & positive_mask).sum())
+                precision, recall, f1 = precision_recall_f1(tp, fp, fn)
+
+                rows.append(
+                    {
+                        "user_id": user_id,
+                        "model": model_name,
+                        "threshold": t,
+                        "precision": precision,
+                        "recall": recall,
+                        "f1": f1,
+                        "n_pos": n_pos,
+                        "n_neg": n_neg,
+                    }
+                )
+
+    if ENABLE_EVAL_FILTERING and candidate_sizes:
+        avg_size = sum(candidate_sizes) / len(candidate_sizes)
+        print(f"[Eval filtering ON] Avg candidate size per user: {avg_size:.2f}")
+
+    results_df = pd.DataFrame(rows)
+    summary_df = (
+        results_df.groupby(["model", "threshold"])[["precision", "recall", "f1"]]
+        .mean()
+        .reset_index()
+        .rename(columns={"precision": "mean_precision", "recall": "mean_recall", "f1": "mean_f1"})
+    )
+    return results_df, summary_df
 
 
 def select_best_alpha(alpha_df: pd.DataFrame) -> pd.Series:
@@ -374,9 +543,37 @@ def main() -> None:
     alpha_df.to_csv(alpha_path, index=False)
 
     best_alpha = select_best_alpha(alpha_df)["alpha"]
+    threshold_results, threshold_summary = evaluate_thresholds(
+        users=users,
+        jobs=jobs,
+        train_interactions=train_interactions,
+        test_interactions=test_interactions,
+        job_tfidf=job_tfidf,
+        user_tfidf=user_tfidf,
+        job_sbert=job_sbert,
+        user_sbert=user_sbert,
+        lfm_model=lfm_model,
+        lfm_dataset=dataset,
+        user_features_matrix=user_features_matrix,
+        item_features_matrix=item_features_matrix,
+        ncf_model=ncf_model,
+        ncf_user_index=ncf_user_index,
+        ncf_job_index=ncf_job_index,
+        thresholds=THRESHOLDS,
+        negative_sample_size=NEGATIVE_SAMPLE_SIZE,
+        alpha=DEFAULT_ALPHA,
+    )
+
+    threshold_path = OUT_DIR / "threshold_results.csv"
+    threshold_summary_path = OUT_DIR / "threshold_results_summary.csv"
+    threshold_results.to_csv(threshold_path, index=False)
+    threshold_summary.to_csv(threshold_summary_path, index=False)
+
     print("Saved evaluation outputs:")
     print(f"- {eval_path}")
     print(f"- {alpha_path}")
+    print(f"- {threshold_path}")
+    print(f"- {threshold_summary_path}")
     print(f"Best alpha (by NDCG@{TOP_K}, recall tie-breaker): {best_alpha}")
 
 
