@@ -53,3 +53,5 @@ job_applicants.csv
 jobstreet_all_jobs.csv
 api_data/
 
+.env
+

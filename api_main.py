@@ -10,11 +10,17 @@ README (quick start)
 """
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv()
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+assert DATABASE_URL is not None, "DATABASE_URL not found in environment"
+
+
 import hashlib
-import json
 import secrets
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -24,6 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.orm import Session
 
 from algorithms.core.data_loading import (
     MAX_JOBS,
@@ -44,45 +51,17 @@ from algorithms.core.models import (
     compute_hybrid_scores,
     predict_lightfm_scores_for_user,
 )
+from crud import applications as crud_applications
+from crud import jobs as crud_jobs
+from crud import saved_jobs as crud_saved_jobs
+from crud import users as crud_users
+from db.session import SessionLocal, get_db
+from models.user import User
 
-
-# ----------------------
-# Auth / persistence
-# ----------------------
-DATA_DIR = Path("api_data")
-USERS_FILE = DATA_DIR / "users.json"
-APPLICATIONS_FILE = DATA_DIR / "applications.json"
-SAVED_JOBS_FILE = DATA_DIR / "saved_jobs.json"
-CUSTOM_JOBS_FILE = DATA_DIR / "custom_jobs.json"
 
 SECRET_KEY = "dev-secret-change-me"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
-
-
-def ensure_storage():
-    DATA_DIR.mkdir(exist_ok=True)
-    for file_path, default in [
-        (USERS_FILE, {}),
-        (APPLICATIONS_FILE, []),
-        (SAVED_JOBS_FILE, {}),
-        (CUSTOM_JOBS_FILE, []),
-    ]:
-        if not file_path.exists():
-            file_path.write_text(json.dumps(default, indent=2))
-
-
-def load_json(path: Path, default):
-    if not path.exists():
-        return default
-    try:
-        return json.loads(path.read_text())
-    except json.JSONDecodeError:
-        return default
-
-
-def save_json(path: Path, payload) -> None:
-    path.write_text(json.dumps(payload, indent=2))
 
 
 def hash_password(password: str) -> str:
@@ -141,9 +120,27 @@ class HybridArtifacts:
             raw_users = raw_users.sample(MAX_USERS, random_state=42)
 
         raw_jobs[JOB_ID_COL] = raw_jobs[JOB_ID_COL].astype(str)
-        custom_jobs = load_json(CUSTOM_JOBS_FILE, [])
-        if custom_jobs:
-            raw_jobs = pd.concat([raw_jobs, pd.DataFrame(custom_jobs)], ignore_index=True)
+        with SessionLocal() as db:
+            db_jobs = crud_jobs.list_jobs(db)
+        if db_jobs:
+            extra_rows = [
+                {
+                    JOB_ID_COL: job.id,
+                    JOB_TITLE_COL: job.title,
+                    JOB_DESC_COL: job.description or "",
+                    JOB_LOCATION_COL: job.location or "",
+                    "category": job.category or "",
+                    "company": job.company or "",
+                    "salary": job.salary or "",
+                }
+                for job in db_jobs
+            ]
+            extra_df = pd.DataFrame(extra_rows)
+            extra_df[JOB_ID_COL] = extra_df[JOB_ID_COL].astype(str)
+            raw_jobs = pd.concat(
+                [raw_jobs, extra_df[~extra_df[JOB_ID_COL].isin(raw_jobs[JOB_ID_COL])]],
+                ignore_index=True,
+            )
         self.job_lookup = {str(row[JOB_ID_COL]): row.to_dict() for _, row in raw_jobs.iterrows()}
 
         self.jobs_features = build_job_table(raw_jobs).reset_index(drop=True)
@@ -227,12 +224,7 @@ class HybridArtifacts:
 
 
 ARTIFACTS = HybridArtifacts()
-ensure_storage()
 ARTIFACTS.load_and_train()
-
-USERS_DB: Dict[str, dict] = load_json(USERS_FILE, {})
-APPLICATIONS_DB: List[dict] = load_json(APPLICATIONS_FILE, [])
-SAVED_JOBS_DB: Dict[str, List[str]] = load_json(SAVED_JOBS_FILE, {})
 
 
 # ----------------------
@@ -329,7 +321,7 @@ app.add_middleware(
 # ----------------------
 # Helpers
 # ----------------------
-def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -338,34 +330,39 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
-        if user_id is None or user_id not in USERS_DB:
+        if user_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    return USERS_DB[user_id]
+    user = crud_users.get_user_with_profile(db, user_id)
+    if user is None:
+        raise credentials_exception
+    return user
 
 
-def serialize_user(user: dict) -> UserProfile:
+def serialize_user(user: User) -> UserProfile:
+    profile = user.profile
     return UserProfile(
-        id=user["id"],
-        email=user["email"],
-        full_name=user.get("full_name", ""),
-        role=user.get("role", "job_seeker"),
-        preferred_location=user.get("preferred_location"),
-        headline=user.get("headline"),
-        skills=user.get("skills"),
-        experience_years=user.get("experience_years"),
+        id=user.id,
+        email=user.email,
+        full_name=profile.full_name if profile else "",
+        role=user.role,
+        preferred_location=profile.location if profile else None,
+        headline=profile.headline if profile else None,
+        skills=profile.skills_text if profile else None,
+        experience_years=profile.experience_years if profile else None,
     )
 
 
-def user_profile_text(user: dict) -> str:
+def user_profile_text(user: User) -> str:
+    profile = user.profile
     tokens = [
-        user.get("full_name", ""),
-        user.get("role", ""),
-        user.get("preferred_location", ""),
-        user.get("headline", ""),
-        user.get("skills", ""),
-        str(user.get("experience_years", "")),
+        profile.full_name if profile else "",
+        user.role,
+        profile.location if profile else "",
+        profile.headline if profile else "",
+        profile.skills_text if profile else "",
+        str(profile.experience_years) if profile and profile.experience_years is not None else "",
     ]
     return " ".join([t for t in tokens if t]).lower()
 
@@ -381,37 +378,35 @@ def paginated_jobs(page: int, page_size: int) -> List[dict]:
 # Auth endpoints
 # ----------------------
 @app.post("/auth/register", response_model=TokenResponse)
-def register_user(payload: RegisterRequest):
-    if any(u.get("email") == payload.email for u in USERS_DB.values()):
+def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
+    if crud_users.get_user_by_email(db, payload.email):
         raise HTTPException(status_code=400, detail="Email already registered")
 
     user_id = secrets.token_hex(8)
-    user_record = {
-        "id": user_id,
-        "email": payload.email,
-        "full_name": payload.full_name,
-        "role": payload.role,
-        "preferred_location": payload.preferred_location,
-        "headline": payload.headline,
-        "skills": payload.skills,
-        "experience_years": payload.experience_years,
-        "hashed_password": hash_password(payload.password),
-        "created_at": datetime.utcnow().isoformat(),
-    }
-    USERS_DB[user_id] = user_record
-    save_json(USERS_FILE, USERS_DB)
+    user_record = crud_users.create_user(
+        db=db,
+        user_id=user_id,
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+        full_name=payload.full_name,
+        location=payload.preferred_location,
+        headline=payload.headline,
+        skills_text=payload.skills,
+        experience_years=payload.experience_years,
+    )
 
     access_token = create_access_token({"sub": user_id})
     return TokenResponse(access_token=access_token, token_type="bearer", user=serialize_user(user_record))
 
 
 @app.post("/auth/login", response_model=TokenResponse)
-def login_user(payload: LoginRequest):
-    user = next((u for u in USERS_DB.values() if u.get("email") == payload.email), None)
-    if not user or not verify_password(payload.password, user.get("hashed_password", "")):
+def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
+    user = crud_users.get_user_by_email(db, payload.email)
+    if not user or not verify_password(payload.password, user.password_hash or ""):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    access_token = create_access_token({"sub": user["id"]})
+    access_token = create_access_token({"sub": user.id})
     return TokenResponse(access_token=access_token, token_type="bearer", user=serialize_user(user))
 
 
@@ -470,8 +465,8 @@ def get_job(job_id: str):
 
 
 @app.post("/jobs", response_model=JobOut)
-def post_job(payload: PostJobRequest, user=Depends(get_current_user)):
-    if user.get("role") != "recruiter":
+def post_job(payload: PostJobRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role != "recruiter":
         raise HTTPException(status_code=403, detail="Only recruiters can post jobs")
 
     new_id = secrets.token_hex(6)
@@ -484,10 +479,19 @@ def post_job(payload: PostJobRequest, user=Depends(get_current_user)):
         "salary": payload.salary,
         JOB_DESC_COL: payload.descriptions,
     }
+    crud_jobs.create_job(
+        db=db,
+        job_id=new_id,
+        title=payload.job_title,
+        description=payload.descriptions,
+        location=payload.location,
+        category=payload.category,
+        company=payload.company,
+        salary=payload.salary,
+        employer_user_id=user.id,
+        skills_text=None,
+    )
     ARTIFACTS.job_lookup[new_id] = job_record
-    custom_jobs = load_json(CUSTOM_JOBS_FILE, [])
-    custom_jobs.append(job_record)
-    save_json(CUSTOM_JOBS_FILE, custom_jobs)
 
     # TODO: Re-train TF-IDF/LightFM to include newly posted jobs in recommendations.
     return JobOut(
@@ -505,44 +509,74 @@ def post_job(payload: PostJobRequest, user=Depends(get_current_user)):
 # Applications & saved jobs (lightweight stubs)
 # ----------------------
 @app.post("/applications", status_code=201)
-def apply_to_job(payload: ApplyRequest, user=Depends(get_current_user)):
-    if payload.job_id not in ARTIFACTS.job_lookup:
+def apply_to_job(payload: ApplyRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    job = crud_jobs.ensure_job_from_lookup(db, payload.job_id, ARTIFACTS.job_lookup)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    application = {
-        "id": secrets.token_hex(6),
-        "job_id": payload.job_id,
-        "user_id": user["id"],
-        "status": "submitted",
-        "cover_letter": payload.cover_letter,
-        "created_at": datetime.utcnow().isoformat(),
+    application = crud_applications.create_application(
+        db=db,
+        application_id=secrets.token_hex(6),
+        user_id=user.id,
+        job_id=payload.job_id,
+        status="submitted",
+        cover_letter=payload.cover_letter,
+    )
+    return {
+        "message": "Application submitted",
+        "application": {
+            "id": application.id,
+            "job_id": application.job_id,
+            "user_id": application.user_id,
+            "status": application.status,
+            "cover_letter": application.cover_letter,
+            "created_at": application.created_at.isoformat(),
+        },
     }
-    APPLICATIONS_DB.append(application)
-    save_json(APPLICATIONS_FILE, APPLICATIONS_DB)
-    return {"message": "Application submitted", "application": application}
 
 
 @app.get("/applications")
-def list_applications(user=Depends(get_current_user)):
-    if user.get("role") == "recruiter":
-        return [app for app in APPLICATIONS_DB if ARTIFACTS.job_lookup.get(app.get("job_id"))]
-    return [app for app in APPLICATIONS_DB if app.get("user_id") == user["id"]]
+def list_applications(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role == "recruiter":
+        apps = crud_applications.list_applications_all(db)
+        return [
+            {
+                "id": app.id,
+                "job_id": app.job_id,
+                "user_id": app.user_id,
+                "status": app.status,
+                "cover_letter": app.cover_letter,
+                "created_at": app.created_at.isoformat(),
+            }
+            for app in apps
+            if ARTIFACTS.job_lookup.get(app.job_id)
+        ]
+    apps = crud_applications.list_applications_by_user(db, user.id)
+    return [
+        {
+            "id": app.id,
+            "job_id": app.job_id,
+            "user_id": app.user_id,
+            "status": app.status,
+            "cover_letter": app.cover_letter,
+            "created_at": app.created_at.isoformat(),
+        }
+        for app in apps
+    ]
 
 
 @app.post("/saved/{job_id}")
-def save_job(job_id: str, user=Depends(get_current_user)):
+def save_job(job_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
     if job_id not in ARTIFACTS.job_lookup:
         raise HTTPException(status_code=404, detail="Job not found")
-    saved = SAVED_JOBS_DB.setdefault(user["id"], [])
-    if job_id not in saved:
-        saved.append(job_id)
-    save_json(SAVED_JOBS_FILE, SAVED_JOBS_DB)
-    return {"saved_jobs": saved}
+    crud_jobs.ensure_job_from_lookup(db, job_id, ARTIFACTS.job_lookup)
+    saved_ids = crud_saved_jobs.save_job(db, user.id, job_id)
+    return {"saved_jobs": saved_ids}
 
 
 @app.get("/saved")
-def list_saved(user=Depends(get_current_user)):
-    saved_ids = SAVED_JOBS_DB.get(user["id"], [])
+def list_saved(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    saved_ids = crud_saved_jobs.list_saved_jobs(db, user.id)
     return [ARTIFACTS.job_lookup[jid] for jid in saved_ids if jid in ARTIFACTS.job_lookup]
 
 
@@ -550,8 +584,8 @@ def list_saved(user=Depends(get_current_user)):
 # Recommendations
 # ----------------------
 @app.get("/users/{user_id}/recommendations", response_model=List[RecommendationOut])
-def user_recommendations(user_id: str, top_k: int = 10):
-    user_record = USERS_DB.get(user_id)
+def user_recommendations(user_id: str, top_k: int = 10, db: Session = Depends(get_db)):
+    user_record = crud_users.get_user_with_profile(db, user_id)
     if not user_record:
         raise HTTPException(status_code=404, detail="User not found")
 
