@@ -25,7 +25,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr, Field
 
-from data_loading import (
+from algorithms.core.data_loading import (
     MAX_JOBS,
     MAX_USERS,
     JOB_DESC_COL,
@@ -38,7 +38,7 @@ from data_loading import (
     load_applicants_dataset,
     load_jobstreet_job_dataset,
 )
-from models import (
+from algorithms.core.models import (
     build_lightfm_dataset,
     build_tfidf_representations,
     compute_hybrid_scores,
@@ -169,7 +169,7 @@ class HybridArtifacts:
             jobs=self.jobs_features,
         )
 
-        from models import train_lightfm  # local import to avoid cycle
+        from algorithms.core.models import train_lightfm  # local import to avoid cycle
 
         self.model = train_lightfm(
             interactions=interactions,

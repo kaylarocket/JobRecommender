@@ -8,6 +8,7 @@ README:
 
 from __future__ import annotations
 
+import argparse
 import random
 from pathlib import Path
 from typing import Dict, Iterable, List, Set, Tuple
@@ -25,6 +26,8 @@ from algorithms.core.data_loading import (
     load_jobstreet_job_dataset,
 )
 from algorithms.core.metrics import (
+    average_precision_at_k,
+    hit_rate_at_k,
     mean,
     minmax_normalize,
     ndcg_at_k,
@@ -57,10 +60,13 @@ TEST_SIZE = 0.2
 TOP_K = 10
 DEFAULT_ALPHA = 0.6
 ALPHAS = [0.0, 0.3, 0.5, 0.7, 1.0]
+EVAL_SEED = 42
+LEAVE_ONE_OUT = True
+EVAL_KS = [1, 5, 10]
 
 THRESHOLDS = [i / 100 for i in range(1, 51)]  # 0.01 ... 0.50
-NEGATIVE_SAMPLE_SIZE = 200
-ENABLE_EVAL_FILTERING = False
+NEGATIVE_SAMPLE_SIZE = 99
+ENABLE_EVAL_FILTERING = True
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -74,6 +80,7 @@ def train_test_split_interactions(
     interactions: pd.DataFrame,
     test_size: float = TEST_SIZE,
     seed: int = 42,
+    leave_one_out: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Stratified train/test split per user for implicit interactions.
@@ -87,8 +94,11 @@ def train_test_split_interactions(
         if len(group) < 2:
             train_rows.append(group)
             continue
-        n_test = max(1, int(len(group) * test_size))
-        test_sample = group.sample(n=n_test, random_state=rng.integers(0, 1_000_000))
+        if leave_one_out:
+            test_sample = group.sample(n=1, random_state=rng.integers(0, 1_000_000))
+        else:
+            n_test = max(1, int(len(group) * test_size))
+            test_sample = group.sample(n=n_test, random_state=rng.integers(0, 1_000_000))
         train_sample = group.drop(test_sample.index)
         train_rows.append(train_sample)
         test_rows.append(test_sample)
@@ -115,25 +125,66 @@ def _rank_jobs(
     return ranked_ids[:top_k]
 
 
-def _empty_metric_store(names: Iterable[str], alphas: Iterable[float]):
-    metrics: Dict[str, Dict[str, List[float]]] = {
-        name: {"precision": [], "recall": [], "ndcg": []} for name in names
-    }
-    alpha_metrics: Dict[float, Dict[str, List[float]]] = {
-        alpha: {"precision": [], "recall": [], "ndcg": []} for alpha in alphas
-    }
+def _rank_candidates(
+    scores: np.ndarray,
+    candidate_ids: List[str],
+    job_index: Dict[str, int],
+    top_k: int,
+) -> List[str]:
+    valid_ids = [cid for cid in candidate_ids if cid in job_index]
+    if not valid_ids:
+        return []
+    candidate_idx = [job_index[cid] for cid in valid_ids]
+    candidate_scores = np.asarray(scores, dtype=float)[candidate_idx]
+    order = np.argsort(candidate_scores)[::-1]
+    ranked_ids = [valid_ids[i] for i in order]
+    return ranked_ids[:top_k]
+
+
+def _build_candidate_ids(
+    jobs: pd.DataFrame,
+    user_row: pd.Series,
+    train_seen: Set[str],
+    positives: Set[str],
+    rng: np.random.Generator,
+    negative_sample_size: int,
+) -> List[str]:
+    candidate_jobs = _filter_candidates_for_user(jobs, user_row)
+    if train_seen:
+        candidate_jobs = candidate_jobs[~candidate_jobs["job_id"].isin(train_seen)]
+    negative_pool = [jid for jid in candidate_jobs["job_id"].tolist() if jid not in positives]
+
+    if negative_sample_size <= 0 or not negative_pool:
+        sampled_negatives = []
+    else:
+        n_neg = min(negative_sample_size, len(negative_pool))
+        sampled_negatives = rng.choice(negative_pool, size=n_neg, replace=False).tolist()
+
+    positives_list = sorted(positives)
+    return positives_list + sampled_negatives
+
+
+def _empty_metric_store(names: Iterable[str], alphas: Iterable[float], eval_ks: Iterable[int]):
+    def _init_bucket():
+        return {k: {"precision": [], "recall": [], "ndcg": [], "hr": [], "map": []} for k in eval_ks}
+
+    metrics: Dict[str, Dict[int, Dict[str, List[float]]]] = {name: _init_bucket() for name in names}
+    alpha_metrics: Dict[float, Dict[int, Dict[str, List[float]]]] = {alpha: _init_bucket() for alpha in alphas}
     return metrics, alpha_metrics
 
 
 def _update_metric(
-    store: Dict[str, List[float]],
+    store: Dict[int, Dict[str, List[float]]],
     predicted: List[str],
     actual: Set[str],
-    k: int,
+    eval_ks: Iterable[int],
 ) -> None:
-    store["precision"].append(precision_at_k(predicted, actual, k))
-    store["recall"].append(recall_at_k(predicted, actual, k))
-    store["ndcg"].append(ndcg_at_k(predicted, actual, k))
+    for k in eval_ks:
+        store[k]["precision"].append(precision_at_k(predicted, actual, k))
+        store[k]["recall"].append(recall_at_k(predicted, actual, k))
+        store[k]["ndcg"].append(ndcg_at_k(predicted, actual, k))
+        store[k]["hr"].append(hit_rate_at_k(predicted, actual, k))
+        store[k]["map"].append(average_precision_at_k(predicted, actual, k))
 
 
 def _build_score_registry(
@@ -196,14 +247,21 @@ def evaluate_all_models(
     ncf_job_index: Dict[str, int],
     alphas: List[float],
     top_k: int,
+    negative_sample_size: int,
+    seed: int = EVAL_SEED,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     job_index = {jid: idx for idx, jid in enumerate(jobs["job_id"])}
     user_index = {uid: idx for idx, uid in enumerate(users["user_id"])}
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(seed)
+    score_rng = np.random.default_rng(seed + 1)
+    train_seen_map = train_interactions.groupby("user_id")["job_id"].apply(set).to_dict()
+    eval_ks = sorted(set(EVAL_KS + [top_k]))
+    max_k = max(eval_ks)
 
     metrics, alpha_metrics = _empty_metric_store(
         names=["tfidf", "sbert", "lightfm", "ncf", "random", f"hybrid_alpha_{DEFAULT_ALPHA}"],
         alphas=alphas,
+        eval_ks=eval_ks,
     )
 
     scorers = _build_score_registry(
@@ -226,14 +284,30 @@ def evaluate_all_models(
         if len(ground_truth) == 0 or user_id not in user_index:
             continue
 
-        train_seen = set(train_interactions.loc[train_interactions["user_id"] == user_id, "job_id"])
+        train_seen = train_seen_map.get(user_id, set())
         uidx = user_index[user_id]
+        user_row = users.iloc[uidx]
+
+        candidate_ids = _build_candidate_ids(
+            jobs=jobs,
+            user_row=user_row,
+            train_seen=train_seen,
+            positives=ground_truth,
+            rng=rng,
+            negative_sample_size=negative_sample_size,
+        )
+        if not candidate_ids:
+            continue
+
+        valid_candidate_ids = [cid for cid in candidate_ids if cid in job_index]
+        if not valid_candidate_ids:
+            continue
 
         tfidf_scores = scorers["tfidf"](user_id, uidx)
         sbert_scores = scorers["sbert"](user_id, uidx)
         lfm_scores = scorers["lightfm"](user_id, uidx)
         ncf_scores = scorers["ncf"](user_id, uidx)
-        random_scores = scorers["random"](user_id, uidx, rng=rng)
+        random_scores = scorers["random"](user_id, uidx, rng=score_rng)
 
         hybrid_scores_default, content_norm, lfm_norm = compute_hybrid_scores(
             content_scores=tfidf_scores,
@@ -241,57 +315,65 @@ def evaluate_all_models(
             alpha=DEFAULT_ALPHA,
         )
 
-        tfidf_ranked = _rank_jobs(content_norm, jobs, job_index, train_seen, top_k)
-        sbert_ranked = _rank_jobs(sbert_scores, jobs, job_index, train_seen, top_k)
-        lfm_ranked = _rank_jobs(lfm_norm, jobs, job_index, train_seen, top_k)
-        ncf_ranked = _rank_jobs(ncf_scores, jobs, job_index, train_seen, top_k)
-        hybrid_ranked = _rank_jobs(hybrid_scores_default, jobs, job_index, train_seen, top_k)
-        random_ranked = _rank_jobs(random_scores, jobs, job_index, train_seen, top_k)
+        tfidf_ranked = _rank_candidates(content_norm, valid_candidate_ids, job_index, max_k)
+        sbert_ranked = _rank_candidates(sbert_scores, valid_candidate_ids, job_index, max_k)
+        lfm_ranked = _rank_candidates(lfm_norm, valid_candidate_ids, job_index, max_k)
+        ncf_ranked = _rank_candidates(ncf_scores, valid_candidate_ids, job_index, max_k)
+        hybrid_ranked = _rank_candidates(hybrid_scores_default, valid_candidate_ids, job_index, max_k)
+        random_ranked = _rank_candidates(random_scores, valid_candidate_ids, job_index, max_k)
 
-        _update_metric(metrics["tfidf"], tfidf_ranked, ground_truth, top_k)
-        _update_metric(metrics["sbert"], sbert_ranked, ground_truth, top_k)
-        _update_metric(metrics["lightfm"], lfm_ranked, ground_truth, top_k)
-        _update_metric(metrics["ncf"], ncf_ranked, ground_truth, top_k)
-        _update_metric(metrics["random"], random_ranked, ground_truth, top_k)
-        _update_metric(metrics[f"hybrid_alpha_{DEFAULT_ALPHA}"], hybrid_ranked, ground_truth, top_k)
+        _update_metric(metrics["tfidf"], tfidf_ranked, ground_truth, eval_ks)
+        _update_metric(metrics["sbert"], sbert_ranked, ground_truth, eval_ks)
+        _update_metric(metrics["lightfm"], lfm_ranked, ground_truth, eval_ks)
+        _update_metric(metrics["ncf"], ncf_ranked, ground_truth, eval_ks)
+        _update_metric(metrics["random"], random_ranked, ground_truth, eval_ks)
+        _update_metric(metrics[f"hybrid_alpha_{DEFAULT_ALPHA}"], hybrid_ranked, ground_truth, eval_ks)
 
         for alpha in alphas:
             hybrid_scores = alpha * content_norm + (1 - alpha) * lfm_norm
-            hybrid_ranked_alpha = _rank_jobs(hybrid_scores, jobs, job_index, train_seen, top_k)
-            _update_metric(alpha_metrics[alpha], hybrid_ranked_alpha, ground_truth, top_k)
+            hybrid_ranked_alpha = _rank_candidates(hybrid_scores, valid_candidate_ids, job_index, max_k)
+            _update_metric(alpha_metrics[alpha], hybrid_ranked_alpha, ground_truth, eval_ks)
 
     eval_rows = []
     for name, store in metrics.items():
-        eval_rows.append(
-            {
-                "model": name,
-                "precision_at_k": mean(store["precision"]),
-                "recall_at_k": mean(store["recall"]),
-                "ndcg_at_k": mean(store["ndcg"]),
-            }
-        )
+        row = {"model": name}
+        for k in eval_ks:
+            row[f"precision_at_{k}"] = mean(store[k]["precision"])
+            row[f"recall_at_{k}"] = mean(store[k]["recall"])
+            row[f"ndcg_at_{k}"] = mean(store[k]["ndcg"])
+            row[f"hr_at_{k}"] = mean(store[k]["hr"])
+            row[f"map_at_{k}"] = mean(store[k]["map"])
+        row["precision_at_k"] = row[f"precision_at_{top_k}"]
+        row["recall_at_k"] = row[f"recall_at_{top_k}"]
+        row["ndcg_at_k"] = row[f"ndcg_at_{top_k}"]
+        row["hr_at_k"] = row[f"hr_at_{top_k}"]
+        row["map_at_k"] = row[f"map_at_{top_k}"]
+        eval_rows.append(row)
 
     alpha_rows = []
     for alpha, store in alpha_metrics.items():
-        alpha_rows.append(
-            {
-                "alpha": alpha,
-                "precision_at_k": mean(store["precision"]),
-                "recall_at_k": mean(store["recall"]),
-                "ndcg_at_k": mean(store["ndcg"]),
-            }
-        )
+        row = {"alpha": alpha}
+        for k in eval_ks:
+            row[f"precision_at_{k}"] = mean(store[k]["precision"])
+            row[f"recall_at_{k}"] = mean(store[k]["recall"])
+            row[f"ndcg_at_{k}"] = mean(store[k]["ndcg"])
+            row[f"hr_at_{k}"] = mean(store[k]["hr"])
+            row[f"map_at_{k}"] = mean(store[k]["map"])
+        row["precision_at_k"] = row[f"precision_at_{top_k}"]
+        row["recall_at_k"] = row[f"recall_at_{top_k}"]
+        row["ndcg_at_k"] = row[f"ndcg_at_{top_k}"]
+        row["hr_at_k"] = row[f"hr_at_{top_k}"]
+        row["map_at_k"] = row[f"map_at_{top_k}"]
+        alpha_rows.append(row)
 
     alpha_df = pd.DataFrame(alpha_rows).sort_values("alpha").reset_index(drop=True)
     best_alpha_row = select_best_alpha(alpha_df)
-    eval_rows.append(
-        {
-            "model": "hybrid_best_alpha",
-            "precision_at_k": best_alpha_row["precision_at_k"],
-            "recall_at_k": best_alpha_row["recall_at_k"],
-            "ndcg_at_k": best_alpha_row["ndcg_at_k"],
-        }
-    )
+    best_row = {"model": "hybrid_best_alpha"}
+    for col in alpha_df.columns:
+        if col == "alpha":
+            continue
+        best_row[col] = best_alpha_row[col]
+    eval_rows.append(best_row)
 
     eval_df = pd.DataFrame(eval_rows)
     return eval_df, alpha_df
@@ -313,11 +395,15 @@ def _filter_candidates_for_user(
     filtered = jobs
     if preferred_location:
         mask_loc = filtered["job_location"].str.lower().str.contains(preferred_location, regex=False, na=False)
-        filtered = filtered[mask_loc]
+        loc_filtered = filtered[mask_loc]
+        if not loc_filtered.empty:
+            filtered = loc_filtered
 
-    if filtered.empty and target_role:
+    if target_role:
         mask_role = filtered["job_category"].str.lower().str.contains(target_role, regex=False, na=False)
-        filtered = filtered[mask_role]
+        role_filtered = filtered[mask_role]
+        if not role_filtered.empty:
+            filtered = role_filtered
 
     return filtered if not filtered.empty else jobs
 
@@ -341,10 +427,12 @@ def evaluate_thresholds(
     thresholds: List[float],
     negative_sample_size: int,
     alpha: float,
+    seed: int = EVAL_SEED,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     job_index = {jid: idx for idx, jid in enumerate(jobs["job_id"])}
     user_index = {uid: idx for idx, uid in enumerate(users["user_id"])}
-    rng = np.random.default_rng(12345)
+    rng = np.random.default_rng(seed)
+    train_seen_map = train_interactions.groupby("user_id")["job_id"].apply(set).to_dict()
 
     rows = []
     candidate_sizes: List[int] = []
@@ -354,7 +442,7 @@ def evaluate_thresholds(
         if len(ground_truth) == 0 or user_id not in user_index:
             continue
 
-        train_seen = set(train_interactions.loc[train_interactions["user_id"] == user_id, "job_id"])
+        train_seen = train_seen_map.get(user_id, set())
         uidx = user_index[user_id]
         user_row = users.iloc[uidx]
 
@@ -383,15 +471,14 @@ def evaluate_thresholds(
             alpha=alpha,
         )
 
-        candidate_jobs = jobs[~jobs["job_id"].isin(train_seen)]
-        candidate_jobs = _filter_candidates_for_user(candidate_jobs, user_row)
-
-        candidate_pool_ids = set(candidate_jobs["job_id"].tolist()) | ground_truth
-        negatives = list(candidate_pool_ids - ground_truth)
-        n_neg_sample = min(len(negatives), negative_sample_size)
-        sampled_negatives = rng.choice(negatives, size=n_neg_sample, replace=False).tolist() if n_neg_sample > 0 else []
-
-        candidate_ids = list(ground_truth | set(sampled_negatives))
+        candidate_ids = _build_candidate_ids(
+            jobs=jobs,
+            user_row=user_row,
+            train_seen=train_seen,
+            positives=ground_truth,
+            rng=rng,
+            negative_sample_size=negative_sample_size,
+        )
         candidate_sizes.append(len(candidate_ids))
         if not candidate_ids:
             continue
@@ -455,8 +542,57 @@ def select_best_alpha(alpha_df: pd.DataFrame) -> pd.Series:
     return alpha_df.sort_values(sort_cols, ascending=False).iloc[0]
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Evaluate recommender models.")
+    parser.add_argument(
+        "--negative-sample-size",
+        type=int,
+        default=NEGATIVE_SAMPLE_SIZE,
+        help="Number of sampled negatives per user for ranking evaluation.",
+    )
+    parser.add_argument(
+        "--test-size",
+        type=float,
+        default=TEST_SIZE,
+        help="Test split size per user when not using leave-one-out.",
+    )
+    parser.add_argument(
+        "--leave-one-out",
+        dest="leave_one_out",
+        action="store_true",
+        help="Hold out exactly one positive per user for evaluation.",
+    )
+    parser.add_argument(
+        "--no-leave-one-out",
+        dest="leave_one_out",
+        action="store_false",
+        help="Disable leave-one-out and use test-size split instead.",
+    )
+    parser.add_argument(
+        "--eval-filtering",
+        dest="eval_filtering",
+        action="store_true",
+        help="Filter candidate jobs by preferred location/target role during evaluation.",
+    )
+    parser.add_argument(
+        "--no-eval-filtering",
+        dest="eval_filtering",
+        action="store_false",
+        help="Disable candidate filtering during evaluation.",
+    )
+    parser.set_defaults(leave_one_out=LEAVE_ONE_OUT)
+    parser.set_defaults(eval_filtering=ENABLE_EVAL_FILTERING)
+    return parser.parse_args()
+
+
 def main() -> None:
-    set_seed(42)
+    args = parse_args()
+    negative_sample_size = max(0, int(args.negative_sample_size))
+    test_size = float(args.test_size)
+    leave_one_out = bool(args.leave_one_out)
+    global ENABLE_EVAL_FILTERING
+    ENABLE_EVAL_FILTERING = bool(args.eval_filtering)
+    set_seed(EVAL_SEED)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     raw_jobs = load_jobstreet_job_dataset()
@@ -471,16 +607,31 @@ def main() -> None:
     users = build_user_table(raw_applicants).reset_index(drop=True)
     print(f"Prepared {len(jobs)} jobs and {len(users)} users.")
 
-    interactions_df = build_synthetic_interactions(users, jobs)
-    train_interactions, test_interactions = train_test_split_interactions(interactions_df, test_size=TEST_SIZE)
+    interactions_df = build_synthetic_interactions(users, jobs, seed=EVAL_SEED)
+    train_interactions, test_interactions = train_test_split_interactions(
+        interactions_df,
+        test_size=test_size,
+        seed=EVAL_SEED,
+        leave_one_out=leave_one_out,
+    )
     print(f"Train interactions: {len(train_interactions)}, Test interactions: {len(test_interactions)}")
+    if leave_one_out:
+        split_note = "leave-one-out"
+    else:
+        split_note = f"test_size={test_size:.2f}"
+    filtering_note = "on" if ENABLE_EVAL_FILTERING else "off"
+    k_note = ",".join(str(k) for k in sorted(set(EVAL_KS + [TOP_K])))
+    print(
+        f"Evaluation protocol: implicit feedback with negative sampling "
+        f"(N={negative_sample_size}), split={split_note}, filtering={filtering_note}, ks={k_note}"
+    )
 
     # Content-based models
     _, job_tfidf, user_tfidf = build_tfidf_representations(users, jobs)
     _, job_sbert, user_sbert = build_sbert_representations(
         users=users["user_text"].values,
         jobs=jobs["job_text"].values,
-        seed=42,
+        seed=EVAL_SEED,
     )
 
     # LightFM
@@ -535,6 +686,8 @@ def main() -> None:
         ncf_job_index=ncf_job_index,
         alphas=alpha_candidates,
         top_k=TOP_K,
+        negative_sample_size=negative_sample_size,
+        seed=EVAL_SEED,
     )
 
     eval_path = OUT_DIR / "evaluation_results.csv"
@@ -560,8 +713,9 @@ def main() -> None:
         ncf_user_index=ncf_user_index,
         ncf_job_index=ncf_job_index,
         thresholds=THRESHOLDS,
-        negative_sample_size=NEGATIVE_SAMPLE_SIZE,
+        negative_sample_size=negative_sample_size,
         alpha=DEFAULT_ALPHA,
+        seed=EVAL_SEED,
     )
 
     threshold_path = OUT_DIR / "threshold_results.csv"

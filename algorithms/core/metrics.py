@@ -56,6 +56,36 @@ def ndcg_at_k(predicted: Iterable[str], actual: Set[str], k: int) -> float:
     return dcg_at_k(predicted, actual, k) / idcg
 
 
+def hit_rate_at_k(predicted: Iterable[str], actual: Set[str], k: int) -> float:
+    """
+    Hit Rate@k for binary relevance (1 if any hit in top-k).
+    """
+    if not actual or k == 0:
+        return 0.0
+    predicted_list = list(predicted)[:k]
+    hits = len(set(predicted_list) & actual)
+    return 1.0 if hits > 0 else 0.0
+
+
+def average_precision_at_k(predicted: Iterable[str], actual: Set[str], k: int) -> float:
+    """
+    Average Precision@k for binary relevance.
+    """
+    if not actual or k == 0:
+        return 0.0
+    predicted_list = list(predicted)[:k]
+    hits = 0
+    sum_precisions = 0.0
+    for rank, item_id in enumerate(predicted_list, start=1):
+        if item_id in actual:
+            hits += 1
+            sum_precisions += hits / float(rank)
+    if hits == 0:
+        return 0.0
+    denom = min(len(actual), k)
+    return sum_precisions / float(denom)
+
+
 def mean(values: Iterable[float]) -> float:
     """
     Safe mean that returns 0.0 for empty iterables.
@@ -92,6 +122,8 @@ __all__ = [
     "recall_at_k",
     "dcg_at_k",
     "ndcg_at_k",
+    "hit_rate_at_k",
+    "average_precision_at_k",
     "mean",
     "precision_recall_f1",
     "minmax_normalize",

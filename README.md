@@ -2,6 +2,10 @@
 
 A new Flutter project.
 
+## Evaluation Protocol
+
+Model evaluation uses implicit feedback with leave-one-out splitting, candidate filtering by preferred location/target role, and negative sampling (N=99 by default, configurable via `--negative-sample-size`). Metrics are reported at K={1,5,10} in addition to the legacy @10 columns.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
