@@ -1,20 +1,52 @@
-# job_recommender_app
+# Job Recommender
 
-A new Flutter project.
+Hybrid job recommendation platform with a Flutter app (job seeker + recruiter flows), FastAPI backend, PostgreSQL database, and ML models (TF-IDF + LightFM hybrid, with SBERT/NCF experiments).
 
-## Evaluation Protocol
+## What’s inside
+- **Frontend (Flutter)**: Role selection, seeker dashboard, recruiter dashboard with jobs, applicants, company profile, and sessioned auth.
+- **Backend (FastAPI)**: Auth, jobs CRUD, applications, saved jobs, `/users/{id}/recommendations` hybrid scoring endpoint.
+- **Algorithms**: TF-IDF content similarity + LightFM collaborative filtering with weighted blend; optional SBERT/NCF experiments; evaluation scripts and plots.
+- **Database**: PostgreSQL via SQLAlchemy/Alembic; entities for users, jobs, applications, saved jobs, user profiles.
 
-Model evaluation uses implicit feedback with leave-one-out splitting, candidate filtering by preferred location/target role, and negative sampling (N=99 by default, configurable via `--negative-sample-size`). Metrics are reported at K={1,5,10} in addition to the legacy @10 columns.
+## Run the Flutter app
+```bash
+flutter pub get
+flutter run -d chrome   # or iOS/Android device
+```
 
-## Getting Started
+## Run the API locally
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt  # ensure fastapi, uvicorn, pandas, scikit-learn, lightfm, python-jose[cryptography]
+uvicorn api_main:app --reload
+```
+API defaults to http://localhost:8000.
 
-This project is a starting point for a Flutter application.
+## Train/evaluate recommendations
+```bash
+# Train TF-IDF + LightFM hybrid and sample outputs
+python algorithms/training/train_hybrid.py
 
-A few resources to get you started if this is your first Flutter project:
+# Full evaluation with metrics (Precision@K, Recall@K, NDCG@K, HitRate@K, MAP@K)
+python evaluate_models.py
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+# Alpha tuning for content/collab blend
+python evaluate_models.py --alpha-tuning
+```
+Artifacts and metrics are saved under `algorithms/data/` and figures under `algorithms/figures/`.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Evaluation protocol (summary)
+- Leave-one-out per user, negative sampling (N=99 configurable), candidate filtering by preferred location/target role.
+- Metrics at K ∈ {1,5,10} plus legacy @10 columns.
+
+## Key paths
+- Frontend: `lib/` (providers, pages, widgets, theme)
+- API: `api_main.py`, `crud/`, `models/`, `db/`
+- Algorithms: `algorithms/` (core, models, training, evaluation, analysis)
+- Data samples: `algorithms/data/`
+
+## Notes
+- Default hybrid weights: content 0.6 / LightFM 0.4 (configurable).
+- Cold-start users get zero LightFM scores; new jobs may have zero TF-IDF until retrained.
+
