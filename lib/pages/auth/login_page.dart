@@ -6,7 +6,7 @@ import '../../providers/job_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/form_input.dart';
 import '../../widgets/primary_button.dart';
-import '../recruiter/recruiter_dashboard_page.dart';
+import '../recruiter/recruiter_main_page.dart';
 import '../role_selection_page.dart';
 import '../seeker/seeker_shell.dart';
 import 'register_page.dart';
@@ -23,6 +23,8 @@ class _LoginPageState extends State<LoginPage> {
   final emailCtrl = TextEditingController();
   final passwordCtrl = TextEditingController();
   late String selectedRole;
+  String? emailError;
+  String? passwordError;
 
   @override
   void initState() {
@@ -44,67 +46,92 @@ class _LoginPageState extends State<LoginPage> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RoleSelectionPage())),
+          onPressed: () => Navigator.pushReplacement(context,
+              MaterialPageRoute(builder: (_) => const RoleSelectionPage())),
         ),
         title: const Text('Welcome back'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                ChoiceChip(
-                  label: const Text('Job Seeker'),
-                  selected: selectedRole == 'job_seeker',
-                  onSelected: (_) => setState(() => selectedRole = 'job_seeker'),
-                ),
-                const SizedBox(width: 10),
-                ChoiceChip(
-                  label: const Text('Recruiter'),
-                  selected: selectedRole == 'recruiter',
-                  onSelected: (_) => setState(() => selectedRole = 'recruiter'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            FormInput(label: 'Email', controller: emailCtrl, hint: 'alex@example.com', keyboardType: TextInputType.emailAddress),
-            const SizedBox(height: 16),
-            FormInput(label: 'Password', controller: passwordCtrl, hint: '••••••••', obscure: true),
-            const SizedBox(height: 20),
-            PrimaryButton(
-              label: 'Sign In',
-              loading: auth.isLoading,
-              onPressed: () async {
-                await auth.login(emailCtrl.text.trim(), passwordCtrl.text);
-                if (auth.session != null) {
-                  _goToDashboard(context, auth);
-                  context.read<JobProvider>().loadJobs();
-                } else if (auth.error != null) {
-                  _showError(context, auth.error!);
-                }
-              },
-            ),
-            if (auth.error != null) ...[
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               const SizedBox(height: 12),
-              Text(auth.error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w700)),
+              Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('Job Seeker'),
+                    selected: selectedRole == 'job_seeker',
+                    onSelected: (_) =>
+                        setState(() => selectedRole = 'job_seeker'),
+                  ),
+                  const SizedBox(width: 10),
+                  ChoiceChip(
+                    label: const Text('Recruiter'),
+                    selected: selectedRole == 'recruiter',
+                    onSelected: (_) =>
+                        setState(() => selectedRole = 'recruiter'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              FormInput(
+                  label: 'Email',
+                  controller: emailCtrl,
+                  hint: 'alex@example.com',
+                  keyboardType: TextInputType.emailAddress),
+              if (emailError != null) _inlineError(emailError!),
+              const SizedBox(height: 16),
+              FormInput(
+                  label: 'Password',
+                  controller: passwordCtrl,
+                  hint: '••••••••',
+                  obscure: true),
+              if (passwordError != null) _inlineError(passwordError!),
+              const SizedBox(height: 20),
+              PrimaryButton(
+                label: 'Sign In',
+                loading: auth.isLoading,
+                onPressed: () async {
+                  final email = emailCtrl.text.trim();
+                  final password = passwordCtrl.text;
+                  setState(() {
+                    emailError = _requiredError(email);
+                    passwordError = _requiredError(password);
+                  });
+                  await auth.login(email, password);
+                  if (!mounted) return;
+                  if (auth.session != null) {
+                    _goToDashboard(context, auth);
+                    context.read<JobProvider>().loadJobs();
+                  } else if (auth.error != null) {
+                    _applyServerError(auth.error!);
+                  }
+                },
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('No account yet? '),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  RegisterPage(initialRole: selectedRole)));
+                    },
+                    child: const Text('Create one',
+                        style: TextStyle(
+                            color: AppTheme.primary,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              )
             ],
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('No account yet? '),
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => RegisterPage(initialRole: selectedRole)));
-                  },
-                  child: const Text('Create one', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w700)),
-                ),
-              ],
-            )
-          ],
+          ),
         ),
       ),
     );
@@ -113,13 +140,80 @@ class _LoginPageState extends State<LoginPage> {
   void _goToDashboard(BuildContext context, AuthProvider auth) {
     final role = auth.session?.profile.role;
     if (role == 'recruiter') {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const RecruiterDashboardPage()), (_) => false);
+      Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const RecruiterMainPage()),
+          (_) => false);
     } else {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const SeekerShell()), (_) => false);
+      Navigator.pushAndRemoveUntil(context,
+          MaterialPageRoute(builder: (_) => const SeekerShell()), (_) => false);
     }
   }
 
   void _showError(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, maxLines: 2, overflow: TextOverflow.ellipsis),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  String? _requiredError(String value) {
+    if (value.trim().isEmpty) {
+      return _friendlyMessage('required');
+    }
+    return null;
+  }
+
+  String _friendlyMessage(String message) {
+    final lower = message.toLowerCase();
+    if (lower.contains('too short')) {
+      return 'Password must be at least 6 characters.';
+    }
+    if (lower.contains('invalid email')) {
+      return 'Please enter a valid email address.';
+    }
+    if (lower.contains('required')) {
+      return 'Please fill in this field.';
+    }
+    return message;
+  }
+
+  void _applyServerError(String message) {
+    final friendly = _friendlyMessage(message);
+    final lower = message.toLowerCase();
+    setState(() {
+      if (lower.contains('invalid email') || lower.contains('email')) {
+        emailError = friendly;
+        return;
+      }
+      if (lower.contains('too short') || lower.contains('password')) {
+        passwordError = friendly;
+        return;
+      }
+      if (lower.contains('required')) {
+        if (emailCtrl.text.trim().isEmpty) {
+          emailError = friendly;
+        }
+        if (passwordCtrl.text.isEmpty) {
+          passwordError = friendly;
+        }
+      }
+    });
+    _showError(context, friendly);
+  }
+
+  Widget _inlineError(String message) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, top: 6),
+      child: Text(
+        message,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+            color: Colors.red, fontWeight: FontWeight.w600, fontSize: 12),
+      ),
+    );
   }
 }

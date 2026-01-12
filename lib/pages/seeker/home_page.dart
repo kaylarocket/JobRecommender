@@ -44,7 +44,7 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
         }
       },
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -52,9 +52,13 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Hello, $name 👋', style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w600)),
+                  Text('Hello, $name 👋',
+                      style: const TextStyle(
+                          color: Colors.black54, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  const Text('Find your next role', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                  const Text('Find your next role',
+                      style:
+                          TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                 ],
               ),
               const CircleAvatar(
@@ -96,7 +100,8 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
                 color: const Color(0xFFEEF2FF),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Text('Recommendations will appear here once you start exploring jobs.'),
+              child: const Text(
+                  'Recommendations will appear here once you start exploring jobs.'),
             )
           else
             Column(
@@ -110,8 +115,12 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
                     trailing: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        const Text('Hybrid score', style: TextStyle(color: Colors.black54, fontSize: 12)),
-                        Text(rec.finalScore.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.w800)),
+                        const Text('Hybrid score',
+                            style:
+                                TextStyle(color: Colors.black54, fontSize: 12)),
+                        Text(rec.finalScore.toStringAsFixed(2),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w800)),
                       ],
                     ),
                     onTap: () => _openDetails(context, job),
@@ -123,11 +132,15 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
           _sectionHeader('Latest openings'),
           const SizedBox(height: 10),
           if (jobs.isLoading)
-            const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
+            const Center(
+                child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: CircularProgressIndicator()))
           else
             ...jobs.jobs.map((job) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: JobCard(job: job, onTap: () => _openDetails(context, job)),
+                  child: JobCard(
+                      job: job, onTap: () => _openDetails(context, job)),
                 ))
         ],
       ),
@@ -138,7 +151,8 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        Text(title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         TextButton(onPressed: () {}, child: const Text('See all')),
       ],
     );
@@ -153,7 +167,8 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
   }
 
   void _openDetails(BuildContext context, Job job) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailsPage(job: job)));
+    Navigator.push(
+        context, MaterialPageRoute(builder: (_) => JobDetailsPage(job: job)));
   }
 }
 

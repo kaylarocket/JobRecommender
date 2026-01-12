@@ -36,40 +36,86 @@ class _PostJobPageState extends State<PostJobPage> {
   Widget build(BuildContext context) {
     final jobProvider = context.read<JobProvider>();
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(title: const Text('Post a job')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + MediaQuery.of(context).viewInsets.bottom),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
-            TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'Job title')), const SizedBox(height: 12),
-            TextField(controller: companyCtrl, decoration: const InputDecoration(labelText: 'Company')), const SizedBox(height: 12),
-            TextField(controller: locationCtrl, decoration: const InputDecoration(labelText: 'Location')), const SizedBox(height: 12),
-            TextField(controller: categoryCtrl, decoration: const InputDecoration(labelText: 'Category / role type')), const SizedBox(height: 12),
-            TextField(controller: salaryCtrl, decoration: const InputDecoration(labelText: 'Salary')), const SizedBox(height: 12),
-            TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description'), maxLines: 6),
-            const SizedBox(height: 16),
-            PrimaryButton(
-              label: 'Publish role',
-              loading: loading,
-              onPressed: () async {
-                setState(() => loading = true);
-                await jobProvider.postJob(
-                  title: titleCtrl.text,
-                  company: companyCtrl.text,
-                  location: locationCtrl.text,
-                  category: categoryCtrl.text,
-                  salary: salaryCtrl.text,
-                  description: descCtrl.text,
-                );
-                setState(() => loading = false);
-                if (mounted) Navigator.pop(context);
-              },
+            TextField(
+              controller: titleCtrl,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Job title'),
             ),
             const SizedBox(height: 12),
-            const Text('Posted jobs are saved via the /jobs POST endpoint. TODO: re-train the recommender when new roles are published.'),
+            TextField(
+              controller: companyCtrl,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Company'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: locationCtrl,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Location'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: categoryCtrl,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Category / role type'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: salaryCtrl,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Salary'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descCtrl,
+              textInputAction: TextInputAction.newline,
+              decoration: const InputDecoration(labelText: 'Description'),
+              minLines: 4,
+              maxLines: 7,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: PrimaryButton(
+                label: 'Publish role',
+                loading: loading,
+                onPressed: () async {
+                  FocusScope.of(context).unfocus();
+                  setState(() => loading = true);
+                  try {
+                    await jobProvider.postJob(
+                      title: titleCtrl.text,
+                      company: companyCtrl.text,
+                      location: locationCtrl.text,
+                      category: categoryCtrl.text,
+                      salary: salaryCtrl.text,
+                      description: descCtrl.text,
+                    );
+                    if (mounted) Navigator.pop(context);
+                  } catch (error) {
+                    if (mounted) _showError(context, error.toString());
+                  } finally {
+                    if (mounted) setState(() => loading = false);
+                  }
+                },
+              ),
+            ),
+            // Posted jobs are saved via /jobs POST endpoint. TODO: re-train the recommender when new roles are published.
           ],
         ),
       ),
     );
+  }
+
+  void _showError(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 }

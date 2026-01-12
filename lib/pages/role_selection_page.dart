@@ -22,8 +22,14 @@ class RoleSelectionPage extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.workspaces_rounded, size: 56, color: Color(0xFF4F46E5)),
-                const SizedBox(height: 16),
+                SizedBox(
+                  height: 80,
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+                const SizedBox(height: 24),
                 const Text(
                   'Find or Post Jobs Effortlessly',
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
@@ -31,7 +37,7 @@ class RoleSelectionPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 const Text(
-                  'Choose how you want to use the platform. The UI stays consistent with your role.',
+                  'Where Fresh Graduates Start Their Careers',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.black54),
                 ),

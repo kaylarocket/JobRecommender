@@ -51,6 +51,7 @@ from algorithms.core.models import (
     compute_hybrid_scores,
     predict_lightfm_scores_for_user,
 )
+from algorithms.employer_recommender import recommend_candidates_for_job
 from crud import applications as crud_applications
 from crud import jobs as crud_jobs
 from crud import saved_jobs as crud_saved_jobs
@@ -283,6 +284,11 @@ class RecommendationOut(BaseModel):
     final_score: float
     content_score: float
     lfm_score: float
+
+
+class CandidateRecommendationOut(BaseModel):
+    user_id: str
+    score: float
 
 
 class JobListResponse(BaseModel):
@@ -610,6 +616,17 @@ def user_recommendations(user_id: str, top_k: int = 10, db: Session = Depends(ge
             )
         )
     return results
+
+
+@app.get("/employer/jobs/{job_id}/recommendations", response_model=List[CandidateRecommendationOut])
+def employer_recommendations(job_id: str, top_n: int = 10, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role != "recruiter":
+        raise HTTPException(status_code=403, detail="Only recruiters can request candidate recommendations")
+    try:
+        recs = recommend_candidates_for_job(job_id=job_id, db_session=db, top_n=top_n)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [CandidateRecommendationOut(user_id=rec["user_id"], score=rec["score"]) for rec in recs]
 
 
 @app.get("/health")
