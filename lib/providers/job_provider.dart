@@ -15,14 +15,32 @@ class JobProvider extends ChangeNotifier {
   List<Recommendation> recommendations = [];
   bool isLoading = false;
   String? error;
+  String? currentSearchQuery;
+  String? currentCategory;
 
-  Future<void> loadJobs() async {
+  Future<void> loadJobs({
+    String? query,
+    String? location,
+    String? category,
+    String? sourceTag,
+  }) async {
+    final source = sourceTag ?? 'unknown';
+    print('[${DateTime.now()}] [JobProvider] loadJobs() START from source=$source, query=$query, category=$category');
     isLoading = true;
     error = null;
+    currentSearchQuery = query;
+    currentCategory = category;
     notifyListeners();
     try {
-      jobs = await _apiService.getJobs();
+      jobs = await _apiService.getJobs(
+        query: query,
+        location: location,
+        category: category,
+        sourceTag: source,
+      );
+      print('[${DateTime.now()}] [JobProvider] loadJobs() END: ${jobs.length} jobs from source=$source');
     } catch (e) {
+      print('[${DateTime.now()}] [JobProvider] loadJobs() ERROR from source=$source: $e');
       error = e.toString();
     } finally {
       isLoading = false;
@@ -30,11 +48,21 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshRecommendations(String userId) async {
+  void clearSearch() {
+    currentSearchQuery = null;
+    currentCategory = null;
+    loadJobs(sourceTag: 'clearSearch');
+  }
+
+  Future<void> refreshRecommendations(String userId, {String? sourceTag}) async {
+    final source = sourceTag ?? 'unknown';
+    print('[${DateTime.now()}] [JobProvider] refreshRecommendations() START for user_id=$userId from source=$source');
     try {
-      recommendations = await _apiService.getRecommendations(userId);
+      recommendations = await _apiService.getRecommendations(userId, sourceTag: source);
+      print('[${DateTime.now()}] [JobProvider] refreshRecommendations() END: ${recommendations.length} recommendations from source=$source');
       notifyListeners();
     } catch (e) {
+      print('[${DateTime.now()}] [JobProvider] refreshRecommendations() ERROR from source=$source: $e');
       // Keep UI usable even if recommendations fail.
       error = e.toString();
       notifyListeners();
@@ -79,5 +107,24 @@ class JobProvider extends ChangeNotifier {
     postedJobs.add(job);
     notifyListeners();
     return job;
+  }
+
+  Future<void> loadPostedJobs({String? sourceTag}) async {
+    final source = sourceTag ?? 'unknown';
+    print('[${DateTime.now()}] [JobProvider] loadPostedJobs() START from source=$source');
+    
+    isLoading = true;
+    error = null;
+    notifyListeners();
+    try {
+      postedJobs = await _apiService.getRecruiterJobs(sourceTag: source);
+      print('[${DateTime.now()}] [JobProvider] loadPostedJobs() END: ${postedJobs.length} jobs from source=$source');
+    } catch (e) {
+      error = e.toString();
+      print('[${DateTime.now()}] [JobProvider] loadPostedJobs() ERROR: $error from source=$source');
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
   }
 }

@@ -99,6 +99,7 @@ class _PostJobPageState extends State<PostJobPage> {
                       salary: salaryCtrl.text,
                       description: descCtrl.text,
                     );
+                    await context.read<JobProvider>().loadPostedJobs();
                     if (mounted) Navigator.pop(context);
                   } catch (error) {
                     if (mounted) _showError(context, error.toString());

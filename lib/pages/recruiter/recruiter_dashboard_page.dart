@@ -7,8 +7,23 @@ import '../../widgets/job_card.dart';
 import 'applicants_page.dart';
 import 'post_job_page.dart';
 
-class RecruiterDashboardPage extends StatelessWidget {
+class RecruiterDashboardPage extends StatefulWidget {
   const RecruiterDashboardPage({super.key});
+
+  @override
+  State<RecruiterDashboardPage> createState() => _RecruiterDashboardPageState();
+}
+
+class _RecruiterDashboardPageState extends State<RecruiterDashboardPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      print('[${DateTime.now()}] [recruiter_dashboard_page] addPostFrameCallback fired');
+      print('[${DateTime.now()}] [recruiter_dashboard_page] calling loadPostedJobs() from source=recruiter_dashboard');
+      context.read<JobProvider>().loadPostedJobs(sourceTag: 'recruiter_dashboard');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +69,9 @@ class RecruiterDashboardPage extends StatelessWidget {
         const SizedBox(height: 24),
         const Text('Posted Jobs', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
-        if (jobs.postedJobs.isEmpty)
+        if (jobs.isLoading)
+          const Center(child: CircularProgressIndicator())
+        else if (jobs.postedJobs.isEmpty)
           _emptyState(
             title: 'No posted jobs yet',
             subtitle: 'Create your first role to start receiving applicants.',

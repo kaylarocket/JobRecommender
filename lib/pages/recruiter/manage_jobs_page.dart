@@ -13,6 +13,16 @@ class _ManageJobsPageState extends State<ManageJobsPage> {
   String _filterStatus = 'All';
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      print('[${DateTime.now()}] [manage_jobs_page] addPostFrameCallback fired');
+      print('[${DateTime.now()}] [manage_jobs_page] calling loadPostedJobs() from source=manage_jobs');
+      context.read<JobProvider>().loadPostedJobs(sourceTag: 'manage_jobs');
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final jobs = context.watch<JobProvider>();
     final filteredJobs = _filterStatus == 'All'
@@ -57,43 +67,45 @@ class _ManageJobsPageState extends State<ManageJobsPage> {
         const Divider(height: 1),
         // List
         Expanded(
-          child: filteredJobs.isEmpty
-              ? const Center(
-                  child: Text('No jobs'),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filteredJobs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final job = filteredJobs[index];
-                    return Container(
+          child: jobs.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : filteredJobs.isEmpty
+                  ? const Center(
+                      child: Text('No jobs'),
+                    )
+                  : ListView.separated(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            job.jobTitle,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
+                      itemCount: filteredJobs.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final job = filteredJobs[index];
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            job.location ?? 'Remote',
-                            style: const TextStyle(color: Colors.black54),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                job.jobTitle,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                job.location ?? 'Remote',
+                                style: const TextStyle(color: Colors.black54),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                        );
+                      },
+                    ),
         ),
       ],
     );

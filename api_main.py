@@ -20,12 +20,13 @@ assert DATABASE_URL is not None, "DATABASE_URL not found in environment"
 
 import hashlib
 import secrets
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -57,6 +58,7 @@ from crud import jobs as crud_jobs
 from crud import saved_jobs as crud_saved_jobs
 from crud import users as crud_users
 from db.session import SessionLocal, get_db
+from models.job import Job
 from models.user import User
 
 
@@ -420,8 +422,13 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
 # Job endpoints
 # ----------------------
 @app.get("/jobs", response_model=JobListResponse)
-def list_jobs(page: int = 1, page_size: int = 20, query: Optional[str] = None, location: Optional[str] = None, category: Optional[str] = None):
-    jobs = list(ARTIFACTS.job_lookup.values())
+def list_jobs(request: Request, page: int = 1, page_size: int = 20, query: Optional[str] = None, location: Optional[str] = None, category: Optional[str] = None):
+    start_time = time.time()
+    source = request.headers.get("X-Source", "unknown")
+    
+    # Use in-memory lookup built at startup and updated on job creation.
+    all_jobs = list(ARTIFACTS.job_lookup.values())
+    
     def _match(job: dict) -> bool:
         if query and query.lower() not in str(job.get(JOB_TITLE_COL, "")).lower() and query.lower() not in str(job.get(JOB_DESC_COL, "")).lower():
             return False
@@ -431,10 +438,15 @@ def list_jobs(page: int = 1, page_size: int = 20, query: Optional[str] = None, l
             return False
         return True
 
-    filtered = [job for job in jobs if _match(job)]
+    filtered = [job for job in all_jobs if _match(job)]
     start = (page - 1) * page_size
     end = start + page_size
     sliced = filtered[start:end]
+    
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    print(f"[{datetime.now()}] [GET /jobs] [source={source}] user_id=anonymous, page={page}, page_size={page_size}, query={query}, location={location}, category={category}")
+    print(f"  → total_from_artifacts={len(ARTIFACTS.job_lookup)}, post_filter_count={len(filtered)}, paginated_result_count={len(sliced)}, elapsed_ms={elapsed_ms}, status_code=200")
+    
     return JobListResponse(
         items=[
             JobOut(
@@ -455,7 +467,33 @@ def list_jobs(page: int = 1, page_size: int = 20, query: Optional[str] = None, l
 
 
 @app.get("/jobs/{job_id}", response_model=JobOut)
-def get_job(job_id: str):
+def get_job(job_id: str, db: Session = Depends(get_db)):
+    # Try database first
+    db_job = crud_jobs.get_job(db, job_id)
+    if db_job:
+        job_dict = {
+            JOB_ID_COL: db_job.id,
+            JOB_TITLE_COL: db_job.title,
+            JOB_DESC_COL: db_job.description or "",
+            JOB_LOCATION_COL: db_job.location or "",
+            "category": db_job.category or "",
+            "company": db_job.company or "",
+            "salary": db_job.salary or "",
+        }
+        # Update in-memory lookup for consistency
+        ARTIFACTS.job_lookup[db_job.id] = job_dict
+        
+        return JobOut(
+            job_id=db_job.id,
+            job_title=db_job.title,
+            company=db_job.company or "",
+            location=db_job.location or "",
+            category=db_job.category or "",
+            salary=db_job.salary or "",
+            descriptions=db_job.description or "",
+        )
+    
+    # Fallback to in-memory lookup (CSV jobs)
     job = ARTIFACTS.job_lookup.get(str(job_id))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -509,6 +547,37 @@ def post_job(payload: PostJobRequest, user=Depends(get_current_user), db: Sessio
         salary=payload.salary,
         descriptions=payload.descriptions,
     )
+
+
+@app.get("/recruiter/jobs", response_model=List[JobOut])
+def get_recruiter_jobs(request: Request, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get all jobs posted by the current recruiter."""
+    start_time = time.time()
+    source = request.headers.get("X-Source", "unknown")
+    
+    if user.role != "recruiter":
+        raise HTTPException(status_code=403, detail="Only recruiters can access this endpoint")
+
+    from sqlalchemy import select
+    jobs = db.execute(select(Job).where(Job.employer_user_id == user.id)).scalars().all()
+    
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    print(f"[{datetime.now()}] [GET /recruiter/jobs] [source={source}] user_id={user.id}")
+    print(f"  → query_time_ms={elapsed_ms}, jobs_count={len(jobs)}, status_code=200")
+
+    return [
+        JobOut(
+            job_id=str(job.id),
+            job_title=job.title or "",
+            company=job.company or "",
+            location=job.location or "",
+            category=job.category or "",
+            salary=job.salary or "",
+            descriptions=job.description or "",
+        )
+        for job in jobs
+    ]
+
 
 
 # ----------------------
@@ -590,12 +659,17 @@ def list_saved(user=Depends(get_current_user), db: Session = Depends(get_db)):
 # Recommendations
 # ----------------------
 @app.get("/users/{user_id}/recommendations", response_model=List[RecommendationOut])
-def user_recommendations(user_id: str, top_k: int = 10, db: Session = Depends(get_db)):
+def user_recommendations(request: Request, user_id: str, top_k: int = 10, db: Session = Depends(get_db)):
+    start_time = time.time()
+    source = request.headers.get("X-Source", "unknown")
+    
     user_record = crud_users.get_user_with_profile(db, user_id)
     if not user_record:
         raise HTTPException(status_code=404, detail="User not found")
 
     text = user_profile_text(user_record)
+    user_exists_in_lf = user_id in getattr(ARTIFACTS, 'user_id_map', {})
+    
     rec_df = ARTIFACTS.recommend(user_id=user_id, user_text=text, top_k=top_k)
 
     results: List[RecommendationOut] = []
@@ -615,6 +689,15 @@ def user_recommendations(user_id: str, top_k: int = 10, db: Session = Depends(ge
                 lfm_score=float(row.get("lfm_score", 0.0)),
             )
         )
+    
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    scores = rec_df["final_score"].values if len(rec_df) > 0 else []
+    print(f"[{datetime.now()}] [GET /recommendations] [source={source}] user_id={user_id}")
+    print(f"  → user_exists_in_lf_dataset={user_exists_in_lf}, input_text_length={len(text)}")
+    if len(scores) > 0:
+        print(f"  → final_scores: min={scores.min():.3f}, max={scores.max():.3f}, mean={scores.mean():.3f}, count={len(scores)}")
+    print(f"  → returned_count={len(results)}, query_time_ms={elapsed_ms}, status_code=200")
+    
     return results
 
 

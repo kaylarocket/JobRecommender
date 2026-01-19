@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/job.dart';
+import '../../models/recommendation.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/job_provider.dart';
 import '../../widgets/job_card.dart';
@@ -16,18 +18,63 @@ class SeekerHomePage extends StatefulWidget {
 
 class _SeekerHomePageState extends State<SeekerHomePage> {
   final searchCtrl = TextEditingController();
+  Timer? _debounce;
+  String? _selectedCategory;
 
   @override
   void initState() {
     super.initState();
+    searchCtrl.addListener(_onSearchChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      print('[${DateTime.now()}] [job_seeker_home] addPostFrameCallback fired');
+      print('[${DateTime.now()}] [job_seeker_home] calling loadJobs() and refreshRecommendations() from source=job_seeker_home');
       final jobs = context.read<JobProvider>();
       final auth = context.read<AuthProvider>();
-      jobs.loadJobs();
+      jobs.loadJobs(sourceTag: 'job_seeker_home');
       if (auth.session != null) {
-        jobs.refreshRecommendations(auth.session!.profile.id);
+        jobs.refreshRecommendations(auth.session!.profile.id, sourceTag: 'job_seeker_home');
       }
     });
+  }
+
+  @override
+  void dispose() {
+    searchCtrl.removeListener(_onSearchChanged);
+    searchCtrl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _performSearch();
+    });
+  }
+
+  void _performSearch() {
+    print('[${DateTime.now()}] [job_seeker_home] _performSearch() called: query="${searchCtrl.text}", category=$_selectedCategory');
+    final jobs = context.read<JobProvider>();
+    jobs.loadJobs(
+      query: searchCtrl.text.isEmpty ? null : searchCtrl.text,
+      category: _selectedCategory,
+      sourceTag: 'job_seeker_home_search',
+    );
+  }
+
+  void _onCategorySelected(String? category) {
+    setState(() {
+      _selectedCategory = category == 'All Jobs' ? null : category;
+    });
+    _performSearch();
+  }
+
+  void _clearSearch() {
+    searchCtrl.clear();
+    setState(() {
+      _selectedCategory = null;
+    });
+    context.read<JobProvider>().clearSearch();
   }
 
   @override
@@ -38,9 +85,10 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
 
     return RefreshIndicator(
       onRefresh: () async {
-        await jobs.loadJobs();
+        print('[${DateTime.now()}] [job_seeker_home] onRefresh triggered');
+        await jobs.loadJobs(sourceTag: 'job_seeker_home_refresh');
         if (auth.session != null) {
-          await jobs.refreshRecommendations(auth.session!.profile.id);
+          await jobs.refreshRecommendations(auth.session!.profile.id, sourceTag: 'job_seeker_home_refresh');
         }
       },
       child: ListView(
@@ -70,10 +118,15 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
           const SizedBox(height: 16),
           TextField(
             controller: searchCtrl,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Search for jobs, companies...',
-              prefixIcon: Icon(Icons.search_rounded),
-              suffixIcon: Icon(Icons.tune_rounded, color: Color(0xFF4F46E5)),
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: searchCtrl.text.isNotEmpty || _selectedCategory != null
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, color: Colors.grey),
+                      onPressed: _clearSearch,
+                    )
+                  : const Icon(Icons.tune_rounded, color: Color(0xFF4F46E5)),
             ),
           ),
           const SizedBox(height: 14),
@@ -81,12 +134,32 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
             height: 44,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              children: const [
-                _FilterChip(label: 'All Jobs', selected: true),
-                _FilterChip(label: 'Engineering'),
-                _FilterChip(label: 'Design'),
-                _FilterChip(label: 'Marketing'),
-                _FilterChip(label: 'Business'),
+              children: [
+                _FilterChip(
+                  label: 'All Jobs',
+                  selected: _selectedCategory == null,
+                  onSelected: () => _onCategorySelected(null),
+                ),
+                _FilterChip(
+                  label: 'Engineering',
+                  selected: _selectedCategory == 'Engineering',
+                  onSelected: () => _onCategorySelected('Engineering'),
+                ),
+                _FilterChip(
+                  label: 'Design',
+                  selected: _selectedCategory == 'Design',
+                  onSelected: () => _onCategorySelected('Design'),
+                ),
+                _FilterChip(
+                  label: 'Marketing',
+                  selected: _selectedCategory == 'Marketing',
+                  onSelected: () => _onCategorySelected('Marketing'),
+                ),
+                _FilterChip(
+                  label: 'Business',
+                  selected: _selectedCategory == 'Business',
+                  onSelected: () => _onCategorySelected('Business'),
+                ),
               ],
             ),
           ),
@@ -106,7 +179,7 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
           else
             Column(
               children: jobs.recommendations.map((rec) {
-                final job = _findJob(jobs.jobs, rec.jobId);
+                final job = _findJob(jobs.jobs, rec.jobId) ?? _jobFromRecommendation(rec);
                 if (job == null) return const SizedBox.shrink();
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -129,13 +202,42 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
               }).toList(),
             ),
           const SizedBox(height: 16),
-          _sectionHeader('Latest openings'),
+          _sectionHeader(
+            jobs.currentSearchQuery != null || jobs.currentCategory != null
+                ? 'Search Results'
+                : 'Latest openings',
+          ),
           const SizedBox(height: 10),
           if (jobs.isLoading)
             const Center(
                 child: Padding(
                     padding: EdgeInsets.all(20),
                     child: CircularProgressIndicator()))
+          else if (jobs.jobs.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.search_off, size: 48, color: Colors.black38),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'No jobs found',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    jobs.currentSearchQuery != null
+                        ? 'Try adjusting your search terms'
+                        : 'Check back later for new opportunities',
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                ],
+              ),
+            )
           else
             ...jobs.jobs.map((job) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -166,6 +268,20 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
     }
   }
 
+  Job? _jobFromRecommendation(Recommendation rec) {
+    if (rec.jobId.isEmpty) return null;
+    final title = (rec.jobTitle ?? '').trim();
+    return Job(
+      jobId: rec.jobId,
+      jobTitle: title.isEmpty ? 'Recommended role' : title,
+      company: rec.company,
+      location: rec.location,
+      category: rec.category,
+      salary: rec.salary,
+      descriptions: null,
+    );
+  }
+
   void _openDetails(BuildContext context, Job job) {
     Navigator.push(
         context, MaterialPageRoute(builder: (_) => JobDetailsPage(job: job)));
@@ -173,10 +289,15 @@ class _SeekerHomePageState extends State<SeekerHomePage> {
 }
 
 class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.label, this.selected = false});
+  const _FilterChip({
+    required this.label,
+    this.selected = false,
+    required this.onSelected,
+  });
 
   final String label;
   final bool selected;
+  final VoidCallback onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -185,7 +306,7 @@ class _FilterChip extends StatelessWidget {
       child: ChoiceChip(
         label: Text(label),
         selected: selected,
-        onSelected: (_) {},
+        onSelected: (_) => onSelected(),
       ),
     );
   }

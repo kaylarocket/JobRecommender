@@ -20,10 +20,11 @@ class ApiService {
     _token = token;
   }
 
-  Map<String, String> _headers({bool auth = false}) {
+  Map<String, String> _headers({bool auth = false, String? source}) {
     return {
       'Content-Type': 'application/json',
       if (auth && _token != null) 'Authorization': 'Bearer $_token',
+      if (source != null) 'X-Source': source,
     };
   }
 
@@ -63,15 +64,39 @@ class ApiService {
     return _parseAuthResponse(resp);
   }
 
-  Future<List<Job>> getJobs({int page = 1, int pageSize = 40}) async {
-    final resp = await http.get(
-      Uri.parse('$baseUrl/jobs?page=$page&page_size=$pageSize'),
-      headers: _headers(),
-    );
+  Future<List<Job>> getJobs({
+    int page = 1,
+    int pageSize = 40,
+    String? query,
+    String? location,
+    String? category,
+    String? sourceTag,
+  }) async {
+    final startTime = DateTime.now();
+    final source = sourceTag ?? 'unknown';
+    
+    final queryParams = {
+      'page': page.toString(),
+      'page_size': pageSize.toString(),
+      if (query != null && query.isNotEmpty) 'query': query,
+      if (location != null && location.isNotEmpty) 'location': location,
+      if (category != null && category.isNotEmpty) 'category': category,
+    };
+    
+    final uri = Uri.parse('$baseUrl/jobs').replace(queryParameters: queryParams);
+    print('[${DateTime.now()}] [ApiService] GET /jobs request: url=$uri, source=$source');
+    
+    final resp = await http.get(uri, headers: _headers(source: source));
+    final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+    
     if (resp.statusCode != 200) {
+      print('[${DateTime.now()}] [ApiService] GET /jobs response: status=${resp.statusCode}, ERROR, elapsed_ms=${elapsed}ms');
       throw Exception('Failed to fetch jobs: ${resp.body}');
     }
     final decoded = jsonDecode(resp.body);
+    final jobsCount = decoded is List ? decoded.length : (decoded['items'] as List).length;
+    print('[${DateTime.now()}] [ApiService] GET /jobs response: status=${resp.statusCode}, jobs_count=$jobsCount, elapsed_ms=${elapsed}ms');
+    
     if (decoded is List) {
       return decoded.map<Job>((e) => Job.fromJson(e as Map<String, dynamic>)).toList();
     }
@@ -90,15 +115,25 @@ class ApiService {
     return Job.fromJson(jsonDecode(resp.body));
   }
 
-  Future<List<Recommendation>> getRecommendations(String userId) async {
+  Future<List<Recommendation>> getRecommendations(String userId, {String? sourceTag}) async {
+    final startTime = DateTime.now();
+    final source = sourceTag ?? 'unknown';
+    
+    print('[${DateTime.now()}] [ApiService] GET /recommendations request: user_id=$userId, source=$source');
+    
     final resp = await http.get(
       Uri.parse('$baseUrl/users/$userId/recommendations'),
-      headers: _headers(auth: true),
+      headers: _headers(auth: true, source: source),
     );
+    final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+    
     if (resp.statusCode != 200) {
+      print('[${DateTime.now()}] [ApiService] GET /recommendations response: status=${resp.statusCode}, ERROR, elapsed_ms=${elapsed}ms');
       throw Exception('Failed to load recommendations');
     }
     final decoded = jsonDecode(resp.body) as List;
+    print('[${DateTime.now()}] [ApiService] GET /recommendations response: status=${resp.statusCode}, recs_count=${decoded.length}, elapsed_ms=${elapsed}ms');
+    
     return decoded.map((e) => Recommendation.fromJson(e)).toList();
   }
 
@@ -147,6 +182,28 @@ class ApiService {
       throw Exception('Failed to post job: ${resp.body}');
     }
     return Job.fromJson(jsonDecode(resp.body));
+  }
+
+  Future<List<Job>> getRecruiterJobs({String? sourceTag}) async {
+    final startTime = DateTime.now();
+    final source = sourceTag ?? 'unknown';
+    
+    print('[${DateTime.now()}] [ApiService] GET /recruiter/jobs request: source=$source');
+    
+    final resp = await http.get(
+      Uri.parse('$baseUrl/recruiter/jobs'),
+      headers: _headers(auth: true, source: source),
+    );
+    final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+    
+    if (resp.statusCode != 200) {
+      print('[${DateTime.now()}] [ApiService] GET /recruiter/jobs response: status=${resp.statusCode}, ERROR, elapsed_ms=${elapsed}ms');
+      throw Exception('Failed to fetch recruiter jobs: ${resp.body}');
+    }
+    final decoded = jsonDecode(resp.body) as List;
+    print('[${DateTime.now()}] [ApiService] GET /recruiter/jobs response: status=${resp.statusCode}, jobs_count=${decoded.length}, elapsed_ms=${elapsed}ms');
+    
+    return decoded.map<Job>((e) => Job.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   UserSession _parseAuthResponse(http.Response resp) {
