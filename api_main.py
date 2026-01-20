@@ -124,6 +124,11 @@ class HybridArtifacts:
         if len(raw_users) > MAX_USERS:
             raw_users = raw_users.sample(MAX_USERS, random_state=42)
 
+        if "created_at" not in raw_jobs.columns:
+            raw_jobs["created_at"] = None
+        if "status" not in raw_jobs.columns:
+            raw_jobs["status"] = "active"
+
         raw_jobs[JOB_ID_COL] = raw_jobs[JOB_ID_COL].astype(str)
         with SessionLocal() as db:
             db_jobs = crud_jobs.list_jobs(db)
@@ -137,6 +142,7 @@ class HybridArtifacts:
                     "category": job.category or "",
                     "company": job.company or "",
                     "salary": job.salary or "",
+                    "created_at": job.created_at.isoformat() if job.created_at else None,
                     "status": job.status or "active",
                 }
                 for job in db_jobs
@@ -469,21 +475,6 @@ def list_jobs(request: Request, page: int = 1, page_size: int = 20, query: Optio
     location_text = location.strip() if location else None
     category_text = category.strip() if category else None
 
-    recent_ids: list[str] = []
-    try:
-        recent_ids = [
-            str(job_id)
-            for job_id in db.execute(
-                select(Job.id)
-                .where(Job.employer_user_id.is_not(None))
-                .order_by(Job.created_at.desc())
-            )
-            .scalars()
-            .all()
-        ]
-    except Exception as exc:
-        print(f"[{datetime.now()}] [GET /jobs] failed to fetch recent recruiter jobs: {exc}")
-
     # Use in-memory lookup built at startup and updated on job creation.
     all_jobs = list(ARTIFACTS.job_lookup.values())
 
@@ -500,15 +491,31 @@ def list_jobs(request: Request, page: int = 1, page_size: int = 20, query: Optio
         return True
 
     filtered = [job for job in all_jobs if _match(job)]
-    if recent_ids:
-        recent_set = set(recent_ids)
-        lookup_by_id = {str(job.get(JOB_ID_COL, "")): job for job in filtered}
-        ordered_jobs = [lookup_by_id[jid] for jid in recent_ids if jid in lookup_by_id]
-        ordered_jobs.extend(
-            [job for job in filtered if str(job.get(JOB_ID_COL, "")) not in recent_set]
-        )
-    else:
-        ordered_jobs = filtered
+    indexed = list(enumerate(filtered))
+
+    def _parse_created_at(value: object) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return None
+            try:
+                return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        return None
+
+    def _sort_key(item: tuple[int, dict]) -> tuple[int, float, int]:
+        idx, job = item
+        created_at = _parse_created_at(job.get("created_at"))
+        if created_at is None:
+            return (1, 0.0, idx)
+        return (0, -created_at.timestamp(), idx)
+
+    ordered_jobs = [job for _, job in sorted(indexed, key=_sort_key)]
 
     combined = [_job_out_from_lookup(job) for job in ordered_jobs]
     start = (page - 1) * page_size
@@ -517,7 +524,7 @@ def list_jobs(request: Request, page: int = 1, page_size: int = 20, query: Optio
 
     elapsed_ms = int((time.time() - start_time) * 1000)
     print(f"[{datetime.now()}] [GET /jobs] [source={source}] user_id=anonymous, page={page}, page_size={page_size}, query={query}, location={location}, category={category}")
-    print(f"  → total_from_artifacts={len(ARTIFACTS.job_lookup)}, recent_recruiter_jobs={len(recent_ids)}, post_filter_count={len(ordered_jobs)}, paginated_result_count={len(sliced)}, elapsed_ms={elapsed_ms}, status_code=200")
+    print(f"  → total_from_artifacts={len(ARTIFACTS.job_lookup)}, post_filter_count={len(ordered_jobs)}, paginated_result_count={len(sliced)}, elapsed_ms={elapsed_ms}, status_code=200")
     
     return JobListResponse(
         items=sliced,
@@ -587,6 +594,7 @@ def post_job(payload: PostJobRequest, user=Depends(get_current_user), db: Sessio
         "salary": payload.salary,
         JOB_DESC_COL: payload.descriptions,
         "status": "active",
+        "created_at": datetime.utcnow().isoformat(),
     }
     crud_jobs.create_job(
         db=db,
