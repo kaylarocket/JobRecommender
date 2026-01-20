@@ -256,6 +256,16 @@ class ApiService {
     return Job.fromJson(jsonDecode(resp.body));
   }
 
+  Future<void> deleteJob(String jobId) async {
+    final resp = await http.delete(
+      Uri.parse('$baseUrl/recruiter/jobs/$jobId'),
+      headers: _headers(auth: true),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to delete job: ${resp.body}');
+    }
+  }
+
   Future<Map<String, dynamic>> updateApplicationStatus(
     String applicationId,
     String status,

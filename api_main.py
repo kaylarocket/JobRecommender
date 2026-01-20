@@ -683,6 +683,23 @@ def update_job_status(job_id: str, payload: JobStatusUpdateRequest, user=Depends
     )
 
 
+@app.delete("/recruiter/jobs/{job_id}")
+def delete_job(job_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role != "recruiter":
+        raise HTTPException(status_code=403, detail="Only recruiters can delete jobs")
+    job = db.get(Job, str(job_id))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.employer_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this job")
+
+    db.delete(job)
+    db.commit()
+    ARTIFACTS.job_lookup.pop(str(job_id), None)
+
+    return {"message": "Job deleted"}
+
+
 
 # ----------------------
 # Applications & saved jobs (lightweight stubs)

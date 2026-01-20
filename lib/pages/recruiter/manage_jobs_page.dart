@@ -159,6 +159,11 @@ class _ManageJobsPageState extends State<ManageJobsPage> {
                                       },
                                     ),
                                   ),
+                                  IconButton(
+                                    tooltip: 'Delete job',
+                                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                    onPressed: () => _confirmDelete(context, job),
+                                  ),
                                 ],
                               ),
                             ],
@@ -189,5 +194,34 @@ class _ManageJobsPageState extends State<ManageJobsPage> {
 
   String _labelForStatus(String status) {
     return status == 'closed' ? 'Closed' : 'Active';
+  }
+
+  Future<void> _confirmDelete(BuildContext context, Job job) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete job?'),
+        content: const Text('This will remove the job and its applications.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+    try {
+      await context.read<JobProvider>().deleteJob(job, sourceTag: 'manage_jobs');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Job deleted')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete job: $e')),
+      );
+    }
   }
 }

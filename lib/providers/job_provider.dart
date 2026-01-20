@@ -146,6 +146,22 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteJob(Job job, {String? sourceTag}) async {
+    final source = sourceTag ?? 'unknown';
+    print('[${DateTime.now()}] [JobProvider] deleteJob() START for job_id=${job.jobId} from source=$source');
+    try {
+      await _apiService.deleteJob(job.jobId);
+      postedJobs.removeWhere((j) => j.jobId == job.jobId);
+      jobs.removeWhere((j) => j.jobId == job.jobId);
+      applications.removeWhere((app) => app['job_id'] == job.jobId);
+      notifyListeners();
+      print('[${DateTime.now()}] [JobProvider] deleteJob() END for job_id=${job.jobId} from source=$source');
+    } catch (e) {
+      print('[${DateTime.now()}] [JobProvider] deleteJob() ERROR for job_id=${job.jobId} from source=$source: $e');
+      rethrow;
+    }
+  }
+
   Future<void> updateApplicationStatus(
     String applicationId,
     String status, {
