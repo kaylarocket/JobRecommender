@@ -158,6 +158,88 @@ class ApiService {
     }
   }
 
+  Future<void> unsaveJob(String jobId) async {
+    final resp = await http.delete(
+      Uri.parse('$baseUrl/saved/$jobId'),
+      headers: _headers(auth: true),
+    );
+    if (resp.statusCode >= 300) {
+      throw Exception('Failed to unsave job');
+    }
+  }
+
+  Future<List<Job>> getSavedJobs({String? sourceTag}) async {
+    final startTime = DateTime.now();
+    final source = sourceTag ?? 'unknown';
+
+    print('[${DateTime.now()}] [ApiService] GET /saved request: source=$source');
+
+    final resp = await http.get(
+      Uri.parse('$baseUrl/saved'),
+      headers: _headers(auth: true, source: source),
+    );
+    final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+
+    if (resp.statusCode != 200) {
+      print('[${DateTime.now()}] [ApiService] GET /saved response: status=${resp.statusCode}, ERROR, elapsed_ms=${elapsed}ms');
+      throw Exception('Failed to fetch saved jobs: ${resp.body}');
+    }
+
+    final decoded = jsonDecode(resp.body) as List;
+    print('[${DateTime.now()}] [ApiService] GET /saved response: status=${resp.statusCode}, saved_count=${decoded.length}, elapsed_ms=${elapsed}ms');
+    return decoded.map<Job>((e) => Job.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getApplications({String? sourceTag}) async {
+    final startTime = DateTime.now();
+    final source = sourceTag ?? 'unknown';
+
+    print('[${DateTime.now()}] [ApiService] GET /applications request: source=$source');
+
+    final resp = await http.get(
+      Uri.parse('$baseUrl/applications'),
+      headers: _headers(auth: true, source: source),
+    );
+    final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+
+    if (resp.statusCode != 200) {
+      print('[${DateTime.now()}] [ApiService] GET /applications response: status=${resp.statusCode}, ERROR, elapsed_ms=${elapsed}ms');
+      throw Exception('Failed to fetch applications: ${resp.body}');
+    }
+
+    final decoded = jsonDecode(resp.body) as List;
+    print('[${DateTime.now()}] [ApiService] GET /applications response: status=${resp.statusCode}, app_count=${decoded.length}, elapsed_ms=${elapsed}ms');
+    return decoded.cast<Map<String, dynamic>>();
+  }
+
+  Future<List<Map<String, dynamic>>> getApplicantsForJob(
+    String jobId, {
+    int topN = 50,
+    String? sourceTag,
+  }) async {
+    final startTime = DateTime.now();
+    final source = sourceTag ?? 'unknown';
+
+    final uri = Uri.parse('$baseUrl/employer/jobs/$jobId/recommendations')
+        .replace(queryParameters: {'top_n': topN.toString()});
+    print('[${DateTime.now()}] [ApiService] GET /employer/jobs/$jobId/recommendations request: source=$source');
+
+    final resp = await http.get(
+      uri,
+      headers: _headers(auth: true, source: source),
+    );
+    final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+
+    if (resp.statusCode != 200) {
+      print('[${DateTime.now()}] [ApiService] GET /employer/jobs/$jobId/recommendations response: status=${resp.statusCode}, ERROR, elapsed_ms=${elapsed}ms');
+      throw Exception('Failed to fetch applicants: ${resp.body}');
+    }
+
+    final decoded = jsonDecode(resp.body) as List;
+    print('[${DateTime.now()}] [ApiService] GET /employer/jobs/$jobId/recommendations response: status=${resp.statusCode}, applicant_count=${decoded.length}, elapsed_ms=${elapsed}ms');
+    return decoded.cast<Map<String, dynamic>>();
+  }
+
   Future<Job> postJob({
     required String title,
     required String company,

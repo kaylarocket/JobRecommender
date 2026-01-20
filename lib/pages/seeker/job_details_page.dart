@@ -14,6 +14,7 @@ class JobDetailsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final jobProvider = context.watch<JobProvider>();
+    final isSaved = jobProvider.isJobSaved(job.jobId);
     return Scaffold(
       appBar: AppBar(title: const Text('Job details')),
       body: SafeArea(
@@ -52,11 +53,14 @@ class JobDetailsPage extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.bookmark_border_rounded),
+                    icon: Icon(isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded),
                     onPressed: () async {
-                      await jobProvider.saveJob(job);
+                      final nowSaved = await jobProvider.toggleSavedJob(job);
                       ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Saved job')));
+                        SnackBar(
+                          content: Text(nowSaved ? 'Saved job' : 'Removed from saved jobs'),
+                        ),
+                      );
                     },
                   )
                 ],
@@ -82,9 +86,12 @@ class JobDetailsPage extends StatelessWidget {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () async {
-                        await jobProvider.saveJob(job);
+                        final nowSaved = await jobProvider.toggleSavedJob(job);
                         ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Saved for later')));
+                          SnackBar(
+                            content: Text(nowSaved ? 'Saved for later' : 'Removed from saved jobs'),
+                          ),
+                        );
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.primary,
@@ -93,15 +100,17 @@ class JobDetailsPage extends StatelessWidget {
                             borderRadius: BorderRadius.circular(16)),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      child: const Text('Save job',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      child: Text(
+                        isSaved ? 'Unsave job' : 'Save job',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
                   )
                 ],
               ),
               const SizedBox(height: 16),
               const Text(
-                  'Note: applications are stored client-side and echoed to the API stub. Extend this to track statuses server-side.',
+                  'Note: applications and saved jobs sync with the server and will appear after you sign back in.',
                   style: TextStyle(color: Colors.black54, fontSize: 12)),
             ],
           ),

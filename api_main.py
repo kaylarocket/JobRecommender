@@ -31,6 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from algorithms.core.data_loading import (
@@ -52,7 +53,7 @@ from algorithms.core.models import (
     compute_hybrid_scores,
     predict_lightfm_scores_for_user,
 )
-from algorithms.employer_recommender import recommend_candidates_for_job
+from algorithms.employer_recommender import recommend_applicants_for_job
 from crud import applications as crud_applications
 from crud import jobs as crud_jobs
 from crud import saved_jobs as crud_saved_jobs
@@ -293,6 +294,17 @@ class CandidateRecommendationOut(BaseModel):
     score: float
 
 
+class ApplicantRecommendationOut(BaseModel):
+    user_id: str
+    score: float
+    full_name: Optional[str] = None
+    headline: Optional[str] = None
+    location: Optional[str] = None
+    application_id: str
+    status: Optional[str] = None
+    applied_at: Optional[datetime] = None
+
+
 class JobListResponse(BaseModel):
     items: List[JobOut]
     page: int
@@ -380,6 +392,18 @@ def paginated_jobs(page: int, page_size: int) -> List[dict]:
     start = (page - 1) * page_size
     end = start + page_size
     return jobs[start:end]
+
+
+def _job_out_from_lookup(job: dict) -> JobOut:
+    return JobOut(
+        job_id=str(job.get(JOB_ID_COL, "")),
+        job_title=str(job.get(JOB_TITLE_COL, "")),
+        company=str(job.get("company", "")),
+        location=str(job.get(JOB_LOCATION_COL, "")),
+        category=str(job.get("category", "")),
+        salary=str(job.get("salary", "")),
+        descriptions=str(job.get(JOB_DESC_COL, "")),
+    )
 
 
 # ----------------------
@@ -558,7 +582,6 @@ def get_recruiter_jobs(request: Request, user=Depends(get_current_user), db: Ses
     if user.role != "recruiter":
         raise HTTPException(status_code=403, detail="Only recruiters can access this endpoint")
 
-    from sqlalchemy import select
     jobs = db.execute(select(Job).where(Job.employer_user_id == user.id)).scalars().all()
     
     elapsed_ms = int((time.time() - start_time) * 1000)
@@ -583,6 +606,37 @@ def get_recruiter_jobs(request: Request, user=Depends(get_current_user), db: Ses
 # ----------------------
 # Applications & saved jobs (lightweight stubs)
 # ----------------------
+def _format_application_payload(app) -> dict:
+    job_title = ""
+    if getattr(app, "job", None) is not None:
+        job_title = app.job.title or ""
+    else:
+        job_meta = ARTIFACTS.job_lookup.get(app.job_id, {})
+        job_title = str(job_meta.get(JOB_TITLE_COL, ""))
+
+    applicant_name = ""
+    applicant_headline = ""
+    applicant_location = ""
+    if getattr(app, "user", None) is not None and getattr(app.user, "profile", None) is not None:
+        profile = app.user.profile
+        applicant_name = profile.full_name or ""
+        applicant_headline = profile.headline or ""
+        applicant_location = profile.location or ""
+
+    return {
+        "id": app.id,
+        "job_id": app.job_id,
+        "user_id": app.user_id,
+        "status": app.status,
+        "cover_letter": app.cover_letter,
+        "created_at": app.created_at.isoformat(),
+        "job_title": job_title,
+        "applicant_name": applicant_name,
+        "applicant_headline": applicant_headline,
+        "applicant_location": applicant_location,
+    }
+
+
 @app.post("/applications", status_code=201)
 def apply_to_job(payload: ApplyRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
     job = crud_jobs.ensure_job_from_lookup(db, payload.job_id, ARTIFACTS.job_lookup)
@@ -599,45 +653,21 @@ def apply_to_job(payload: ApplyRequest, user=Depends(get_current_user), db: Sess
     )
     return {
         "message": "Application submitted",
-        "application": {
-            "id": application.id,
-            "job_id": application.job_id,
-            "user_id": application.user_id,
-            "status": application.status,
-            "cover_letter": application.cover_letter,
-            "created_at": application.created_at.isoformat(),
-        },
+        "application": _format_application_payload(application),
     }
 
 
 @app.get("/applications")
 def list_applications(user=Depends(get_current_user), db: Session = Depends(get_db)):
     if user.role == "recruiter":
-        apps = crud_applications.list_applications_all(db)
+        apps = crud_applications.list_applications_for_employer(db, user.id)
         return [
-            {
-                "id": app.id,
-                "job_id": app.job_id,
-                "user_id": app.user_id,
-                "status": app.status,
-                "cover_letter": app.cover_letter,
-                "created_at": app.created_at.isoformat(),
-            }
+            _format_application_payload(app)
             for app in apps
-            if ARTIFACTS.job_lookup.get(app.job_id)
+            if getattr(app, "job", None) is not None or ARTIFACTS.job_lookup.get(app.job_id)
         ]
     apps = crud_applications.list_applications_by_user(db, user.id)
-    return [
-        {
-            "id": app.id,
-            "job_id": app.job_id,
-            "user_id": app.user_id,
-            "status": app.status,
-            "cover_letter": app.cover_letter,
-            "created_at": app.created_at.isoformat(),
-        }
-        for app in apps
-    ]
+    return [_format_application_payload(app) for app in apps]
 
 
 @app.post("/saved/{job_id}")
@@ -649,10 +679,41 @@ def save_job(job_id: str, user=Depends(get_current_user), db: Session = Depends(
     return {"saved_jobs": saved_ids}
 
 
-@app.get("/saved")
+@app.delete("/saved/{job_id}")
+def unsave_job(job_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    saved_ids = crud_saved_jobs.remove_saved_job(db, user.id, job_id)
+    return {"saved_jobs": saved_ids}
+
+
+@app.get("/saved", response_model=List[JobOut])
 def list_saved(user=Depends(get_current_user), db: Session = Depends(get_db)):
     saved_ids = crud_saved_jobs.list_saved_jobs(db, user.id)
-    return [ARTIFACTS.job_lookup[jid] for jid in saved_ids if jid in ARTIFACTS.job_lookup]
+    if not saved_ids:
+        return []
+
+    db_jobs = db.execute(select(Job).where(Job.id.in_(saved_ids))).scalars().all()
+    db_job_map = {job.id: job for job in db_jobs}
+
+    results: List[JobOut] = []
+    for job_id in saved_ids:
+        db_job = db_job_map.get(job_id)
+        if db_job:
+            results.append(
+                JobOut(
+                    job_id=db_job.id,
+                    job_title=db_job.title,
+                    company=db_job.company or "",
+                    location=db_job.location or "",
+                    category=db_job.category or "",
+                    salary=db_job.salary or "",
+                    descriptions=db_job.description or "",
+                )
+            )
+            continue
+        job_meta = ARTIFACTS.job_lookup.get(job_id)
+        if job_meta:
+            results.append(_job_out_from_lookup(job_meta))
+    return results
 
 
 # ----------------------
@@ -701,15 +762,20 @@ def user_recommendations(request: Request, user_id: str, top_k: int = 10, db: Se
     return results
 
 
-@app.get("/employer/jobs/{job_id}/recommendations", response_model=List[CandidateRecommendationOut])
+@app.get("/employer/jobs/{job_id}/recommendations", response_model=List[ApplicantRecommendationOut])
 def employer_recommendations(job_id: str, top_n: int = 10, user=Depends(get_current_user), db: Session = Depends(get_db)):
     if user.role != "recruiter":
-        raise HTTPException(status_code=403, detail="Only recruiters can request candidate recommendations")
+        raise HTTPException(status_code=403, detail="Only recruiters can request applicant rankings")
+    job = db.get(Job, str(job_id))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.employer_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to view applicants for this job")
     try:
-        recs = recommend_candidates_for_job(job_id=job_id, db_session=db, top_n=top_n)
+        recs = recommend_applicants_for_job(job_id=job_id, db_session=db, top_n=top_n)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return [CandidateRecommendationOut(user_id=rec["user_id"], score=rec["score"]) for rec in recs]
+    return recs
 
 
 @app.get("/health")

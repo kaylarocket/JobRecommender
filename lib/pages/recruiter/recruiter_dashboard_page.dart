@@ -22,6 +22,7 @@ class _RecruiterDashboardPageState extends State<RecruiterDashboardPage> {
       print('[${DateTime.now()}] [recruiter_dashboard_page] addPostFrameCallback fired');
       print('[${DateTime.now()}] [recruiter_dashboard_page] calling loadPostedJobs() from source=recruiter_dashboard');
       context.read<JobProvider>().loadPostedJobs(sourceTag: 'recruiter_dashboard');
+      context.read<JobProvider>().loadApplications(sourceTag: 'recruiter_dashboard');
     });
   }
 
@@ -92,7 +93,7 @@ class _RecruiterDashboardPageState extends State<RecruiterDashboardPage> {
                   icon: const Icon(Icons.people_outline),
                   onPressed: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => ApplicantsPage(jobTitle: job.jobTitle)),
+                    MaterialPageRoute(builder: (_) => ApplicantsPage(jobTitle: job.jobTitle, jobId: job.jobId)),
                   ),
                 ),
               );

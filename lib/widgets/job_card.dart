@@ -18,23 +18,18 @@ class JobCard extends StatelessWidget {
     final category = _cleanText(job.category);
     final salary = _cleanText(job.salary);
     final description = _cleanPreviewText(job.descriptions);
-
-    // Preview priority: salary first; otherwise description.
     final previewText = salary ?? description;
-
-    // If caller supplies trailing (e.g. bookmark), we don't show the chevron.
     final showChevron = trailing == null;
-
     final hasMeta = location != null || category != null;
 
-    // Build the text/meta blocks shown under the title area
     final blocks = <Widget>[];
     void addBlock(Widget child) {
-      if (blocks.isNotEmpty) blocks.add(const SizedBox(height: 8));
+      if (blocks.isNotEmpty) {
+        blocks.add(const SizedBox(height: 8));
+      }
       blocks.add(child);
     }
 
-    // Title
     addBlock(
       Text(
         title,
@@ -43,36 +38,21 @@ class JobCard extends StatelessWidget {
         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
       ),
     );
-
-    // Company
     if (company != null) {
       addBlock(
         Text(
           company,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.black54,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w600),
         ),
       );
     }
-
-    // Chips (location/category)
     if (hasMeta) {
       addBlock(_metaSection(location: location, category: category));
     }
-
-    // Preview row (salary pill OR icon+description) + chevron
     if (previewText != null || showChevron) {
-      addBlock(
-        _previewRow(
-          previewText: previewText,
-          isSalary: salary != null,
-          showChevron: showChevron,
-        ),
-      );
+      addBlock(_previewRow(previewText: previewText, isSalary: salary != null, showChevron: showChevron));
     }
 
     return InkWell(
@@ -92,110 +72,78 @@ class JobCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Left icon block (like your reference)
-            Container(
-              height: 44,
-              width: 44,
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.work_outline_rounded,
-                color: AppTheme.primary,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 44,
+                  width: 44,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.work_outline_rounded, color: AppTheme.primary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: blocks)),
+                if (trailing != null) Padding(padding: const EdgeInsets.only(left: 8), child: trailing!),
+              ],
             ),
-            const SizedBox(width: 12),
-
-            // Main content
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: blocks,
-              ),
-            ),
-
-            // Optional trailing widget (bookmark etc.)
-            if (trailing != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: trailing!,
-              ),
           ],
         ),
       ),
     );
   }
 
-  /// Meta chips (keep bordered pills; allow wrapping)
   Widget _metaSection({String? location, String? category}) {
-    final chips = <Widget>[];
-    if (location != null) chips.add(_pill(Icons.place_outlined, location));
-    if (category != null) chips.add(_pill(Icons.category_outlined, category));
-
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: chips,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final widgets = <Widget>[];
+        if (location != null) {
+          widgets.add(_pill(Icons.place_outlined, location, maxWidth: maxWidth));
+        }
+        if (category != null) {
+          if (widgets.isNotEmpty) {
+            widgets.add(const SizedBox(height: 6));
+          }
+          widgets.add(_pill(Icons.category_outlined, category, maxWidth: maxWidth));
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: widgets);
+      },
     );
   }
 
-  /// Preview row:
-  /// - if salary exists: show salary pill
-  /// - else: show icon + description (inline with icon)
-  /// - chevron on the right if no custom trailing widget
-  Widget _previewRow({
-    required String? previewText,
-    required bool isSalary,
-    required bool showChevron,
-  }) {
-    Widget left;
-
+  Widget _previewRow({required String? previewText, required bool isSalary, required bool showChevron}) {
+    Widget preview;
     if (previewText == null) {
-      left = const SizedBox.shrink();
+      preview = const SizedBox.shrink();
     } else if (isSalary) {
-      left = _salaryPill(previewText);
+      preview = _salaryPill(previewText);
     } else {
-      left = Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.description_outlined, size: 16, color: Colors.black54),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              previewText,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.w600,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
+      preview = Text(
+        previewText,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
       );
     }
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: left),
+        Expanded(child: preview),
         if (showChevron) ...[
           const SizedBox(width: 8),
-          const Padding(
-            padding: EdgeInsets.only(top: 2),
-            child: Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.black54),
-          ),
+          const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.black54),
         ],
       ],
     );
   }
 
-  /// Salary pill (keep as you had; looks good)
   Widget _salaryPill(String salary) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -212,21 +160,20 @@ class JobCard extends StatelessWidget {
     );
   }
 
-  /// Bordered chip pill with icon + text (your desired look)
-  Widget _pill(IconData icon, String label) {
-    return IntrinsicWidth(
+  Widget _pill(IconData icon, String label, {required double maxWidth}) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 14, color: Colors.black54),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
             Flexible(
               child: Text(
                 label,
@@ -242,10 +189,6 @@ class JobCard extends StatelessWidget {
     );
   }
 
-  // ----------------------------
-  // Text cleaning helpers
-  // ----------------------------
-
   String? _cleanText(String? value) {
     if (value == null) return null;
     final trimmed = value.trim();
@@ -258,23 +201,17 @@ class JobCard extends StatelessWidget {
   String? _cleanPreviewText(String? value) {
     final cleaned = _cleanText(value);
     if (cleaned == null) return null;
-
     final lines = cleaned.split(RegExp(r'[\r\n]+'));
     final kept = <String>[];
-
     for (final line in lines) {
       final trimmed = line.trim();
       if (trimmed.isEmpty) continue;
-
       final stripped = _stripLabelPrefix(trimmed);
       final normalized = _cleanText(stripped);
       if (normalized == null) continue;
-
       kept.add(normalized);
     }
-
     if (kept.isEmpty) return null;
-
     final joined = kept.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
     return _cleanText(joined);
   }
@@ -287,7 +224,6 @@ class JobCard extends StatelessWidget {
       RegExp(r'^company\s+overview\s*:?', caseSensitive: false),
       RegExp(r'^job\s+summary\s*:?', caseSensitive: false),
     ];
-
     for (final pattern in labelPatterns) {
       final match = pattern.firstMatch(line);
       if (match != null && match.start == 0) {

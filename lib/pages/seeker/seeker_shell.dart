@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../providers/auth_provider.dart';
+import '../../providers/job_provider.dart';
 import 'applications_page.dart';
 import 'home_page.dart';
 import 'profile_page.dart';
@@ -21,6 +24,20 @@ class _SeekerShellState extends State<SeekerShell> {
     SavedJobsPage(),
     ProfilePage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthProvider>();
+      if (auth.session == null) {
+        return;
+      }
+      final jobs = context.read<JobProvider>();
+      jobs.loadSavedJobs(sourceTag: 'seeker_shell');
+      jobs.loadApplications(sourceTag: 'seeker_shell');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

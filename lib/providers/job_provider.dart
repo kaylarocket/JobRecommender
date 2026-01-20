@@ -18,6 +18,10 @@ class JobProvider extends ChangeNotifier {
   String? currentSearchQuery;
   String? currentCategory;
 
+  bool isJobSaved(String jobId) {
+    return saved.any((job) => job.jobId == jobId);
+  }
+
   Future<void> loadJobs({
     String? query,
     String? location,
@@ -77,14 +81,75 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> unsaveJob(Job job) async {
+    await _apiService.unsaveJob(job.jobId);
+    saved.removeWhere((j) => j.jobId == job.jobId);
+    notifyListeners();
+  }
+
+  Future<bool> toggleSavedJob(Job job) async {
+    if (isJobSaved(job.jobId)) {
+      await unsaveJob(job);
+      return false;
+    }
+    await saveJob(job);
+    return true;
+  }
+
   Future<void> apply(Job job, {String? coverLetter}) async {
     await _apiService.applyToJob(jobId: job.jobId, coverLetter: coverLetter);
-    applications.add({
+    applications.insert(0, {
       'job_id': job.jobId,
       'job_title': job.jobTitle,
       'status': 'Submitted',
     });
     notifyListeners();
+    await loadApplications(sourceTag: 'apply');
+  }
+
+  Future<void> loadSavedJobs({String? sourceTag}) async {
+    final source = sourceTag ?? 'unknown';
+    print('[${DateTime.now()}] [JobProvider] loadSavedJobs() START from source=$source');
+    try {
+      saved = await _apiService.getSavedJobs(sourceTag: source);
+      print('[${DateTime.now()}] [JobProvider] loadSavedJobs() END: ${saved.length} saved jobs from source=$source');
+      notifyListeners();
+    } catch (e) {
+      print('[${DateTime.now()}] [JobProvider] loadSavedJobs() ERROR from source=$source: $e');
+    }
+  }
+
+  Future<void> loadApplications({String? sourceTag}) async {
+    final source = sourceTag ?? 'unknown';
+    print('[${DateTime.now()}] [JobProvider] loadApplications() START from source=$source');
+    try {
+      applications = await _apiService.getApplications(sourceTag: source);
+      print('[${DateTime.now()}] [JobProvider] loadApplications() END: ${applications.length} applications from source=$source');
+      notifyListeners();
+    } catch (e) {
+      print('[${DateTime.now()}] [JobProvider] loadApplications() ERROR from source=$source: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchApplicantsForJob(
+    String jobId, {
+    int topN = 50,
+    String? sourceTag,
+  }) async {
+    final source = sourceTag ?? 'unknown';
+    print('[${DateTime.now()}] [JobProvider] fetchApplicantsForJob() START for job_id=$jobId from source=$source');
+    try {
+      final applicants = await _apiService.getApplicantsForJob(
+        jobId,
+        topN: topN,
+        sourceTag: source,
+      );
+      print('[${DateTime.now()}] [JobProvider] fetchApplicantsForJob() END: ${applicants.length} applicants for job_id=$jobId from source=$source');
+      return applicants;
+    } catch (e) {
+      print('[${DateTime.now()}] [JobProvider] fetchApplicantsForJob() ERROR for job_id=$jobId from source=$source: $e');
+      rethrow;
+    }
   }
 
   Future<Job> postJob({
