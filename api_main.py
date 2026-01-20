@@ -31,7 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from algorithms.core.data_loading import (
@@ -59,9 +59,12 @@ from crud import jobs as crud_jobs
 from crud import saved_jobs as crud_saved_jobs
 from crud import users as crud_users
 from db.session import SessionLocal, get_db
+from models.application import Application
+from models.employer import Employer
 from models.job import Job
 from models.saved_job import SavedJob
 from models.user import User
+from models.user_profile import UserProfile as UserProfileModel
 
 
 SECRET_KEY = "dev-secret-change-me"
@@ -251,6 +254,8 @@ class UserProfile(BaseModel):
     headline: Optional[str] = None
     skills: Optional[str] = None
     experience_years: Optional[int] = None
+    company_name: Optional[str] = None
+    company_location: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):
@@ -262,6 +267,14 @@ class RegisterRequest(BaseModel):
     headline: Optional[str] = None
     skills: Optional[str] = None
     experience_years: Optional[int] = None
+    company_name: Optional[str] = None
+    company_location: Optional[str] = None
+
+
+class RecruiterProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    company_name: Optional[str] = None
+    company_location: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -380,6 +393,7 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
 
 def serialize_user(user: User) -> UserProfile:
     profile = user.profile
+    employer = user.employer
     return UserProfile(
         id=user.id,
         email=user.email,
@@ -389,6 +403,8 @@ def serialize_user(user: User) -> UserProfile:
         headline=profile.headline if profile else None,
         skills=profile.skills_text if profile else None,
         experience_years=profile.experience_years if profile else None,
+        company_name=employer.company_name if employer else None,
+        company_location=employer.company_location if employer else None,
     )
 
 
@@ -445,6 +461,8 @@ def register_user(payload: RegisterRequest, db: Session = Depends(get_db)):
         headline=payload.headline,
         skills_text=payload.skills,
         experience_years=payload.experience_years,
+        company_name=payload.company_name,
+        company_location=payload.company_location,
     )
 
     access_token = create_access_token({"sub": user_id})
@@ -461,6 +479,43 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
 
     access_token = create_access_token({"sub": user.id})
     return TokenResponse(access_token=access_token, token_type="bearer", user=serialize_user(user))
+
+
+@app.patch("/recruiter/profile", response_model=UserProfile)
+def update_recruiter_profile(
+    payload: RecruiterProfileUpdate,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if user.role != "recruiter":
+        raise HTTPException(status_code=403, detail="Only recruiters can update their profile")
+
+    user_record = crud_users.get_user_with_profile(db, user.id)
+    if not user_record:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    def _normalize(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        return trimmed if trimmed else None
+
+    if payload.full_name is not None:
+        if user_record.profile is None:
+            user_record.profile = UserProfileModel(user_id=user_record.id)
+        user_record.profile.full_name = _normalize(payload.full_name)
+
+    if payload.company_name is not None or payload.company_location is not None:
+        if user_record.employer is None:
+            user_record.employer = Employer(user_id=user_record.id)
+        if payload.company_name is not None:
+            user_record.employer.company_name = _normalize(payload.company_name)
+        if payload.company_location is not None:
+            user_record.employer.company_location = _normalize(payload.company_location)
+
+    db.commit()
+    db.refresh(user_record)
+    return serialize_user(user_record)
 
 
 # ----------------------
@@ -698,6 +753,32 @@ def delete_job(job_id: str, user=Depends(get_current_user), db: Session = Depend
     ARTIFACTS.job_lookup.pop(str(job_id), None)
 
     return {"message": "Job deleted"}
+
+
+@app.delete("/recruiter/account")
+def delete_recruiter_account(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role != "recruiter":
+        raise HTTPException(status_code=403, detail="Only recruiters can delete their account")
+
+    job_ids = [
+        str(job_id)
+        for job_id in db.execute(select(Job.id).where(Job.employer_user_id == user.id)).scalars().all()
+    ]
+    if job_ids:
+        db.execute(delete(Application).where(Application.job_id.in_(job_ids)))
+        db.execute(delete(SavedJob).where(SavedJob.job_id.in_(job_ids)))
+        db.execute(delete(Job).where(Job.id.in_(job_ids)))
+
+    db.execute(delete(SavedJob).where(SavedJob.user_id == user.id))
+    db.execute(delete(Application).where(Application.user_id == user.id))
+
+    db.delete(user)
+    db.commit()
+
+    for job_id in job_ids:
+        ARTIFACTS.job_lookup.pop(job_id, None)
+
+    return {"message": "Account deleted", "deleted_jobs": len(job_ids)}
 
 
 

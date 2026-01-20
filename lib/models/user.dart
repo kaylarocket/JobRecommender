@@ -7,6 +7,8 @@ class UserProfile {
   final String? headline;
   final String? skills;
   final int? experienceYears;
+  final String? companyName;
+  final String? companyLocation;
 
   const UserProfile({
     required this.id,
@@ -17,6 +19,8 @@ class UserProfile {
     this.headline,
     this.skills,
     this.experienceYears,
+    this.companyName,
+    this.companyLocation,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -29,6 +33,8 @@ class UserProfile {
       headline: json['headline'],
       skills: json['skills'],
       experienceYears: json['experience_years'],
+      companyName: json['company_name'],
+      companyLocation: json['company_location'],
     );
   }
 
@@ -42,6 +48,8 @@ class UserProfile {
       'headline': headline,
       'skills': skills,
       'experience_years': experienceYears,
+      'company_name': companyName,
+      'company_location': companyLocation,
     };
   }
 }

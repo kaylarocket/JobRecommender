@@ -37,6 +37,8 @@ class ApiService {
     String? headline,
     String? skills,
     int? experienceYears,
+    String? companyName,
+    String? companyLocation,
   }) async {
     final resp = await http.post(
       Uri.parse('$baseUrl/auth/register'),
@@ -50,6 +52,8 @@ class ApiService {
         'headline': headline,
         'skills': skills,
         'experience_years': experienceYears,
+        'company_name': companyName,
+        'company_location': companyLocation,
       }),
     );
     return _parseAuthResponse(resp);
@@ -66,6 +70,26 @@ class ApiService {
       body: jsonEncode({'email': email, 'password': password, 'role': role}),
     );
     return _parseAuthResponse(resp);
+  }
+
+  Future<UserProfile> updateRecruiterProfile({
+    String? fullName,
+    String? companyName,
+    String? companyLocation,
+  }) async {
+    final resp = await http.patch(
+      Uri.parse('$baseUrl/recruiter/profile'),
+      headers: _headers(auth: true),
+      body: jsonEncode({
+        if (fullName != null) 'full_name': fullName,
+        if (companyName != null) 'company_name': companyName,
+        if (companyLocation != null) 'company_location': companyLocation,
+      }),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to update profile: ${resp.body}');
+    }
+    return UserProfile.fromJson(jsonDecode(resp.body) as Map<String, dynamic>);
   }
 
   Future<List<Job>> getJobs({
@@ -263,6 +287,16 @@ class ApiService {
     );
     if (resp.statusCode != 200) {
       throw Exception('Failed to delete job: ${resp.body}');
+    }
+  }
+
+  Future<void> deleteRecruiterAccount() async {
+    final resp = await http.delete(
+      Uri.parse('$baseUrl/recruiter/account'),
+      headers: _headers(auth: true),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to delete account: ${resp.body}');
     }
   }
 

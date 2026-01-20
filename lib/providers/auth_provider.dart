@@ -40,6 +40,8 @@ class AuthProvider extends ChangeNotifier {
     String? headline,
     String? skills,
     int? experienceYears,
+    String? companyName,
+    String? companyLocation,
   }) async {
     _loading = true;
     _error = null;
@@ -54,6 +56,8 @@ class AuthProvider extends ChangeNotifier {
         headline: headline,
         skills: skills,
         experienceYears: experienceYears,
+        companyName: companyName,
+        companyLocation: companyLocation,
       );
     } catch (e) {
       _error = e.toString();
@@ -67,6 +71,47 @@ class AuthProvider extends ChangeNotifier {
     _session = null;
     _apiService.updateToken(null);
     notifyListeners();
+  }
+
+  Future<void> deleteAccount() async {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await _apiService.deleteRecruiterAccount();
+      _session = null;
+      _apiService.updateToken(null);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateRecruiterProfile({
+    String? fullName,
+    String? companyName,
+    String? companyLocation,
+  }) async {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final updatedProfile = await _apiService.updateRecruiterProfile(
+        fullName: fullName,
+        companyName: companyName,
+        companyLocation: companyLocation,
+      );
+      if (_session != null) {
+        _session = UserSession(profile: updatedProfile, token: _session!.token);
+      }
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
   }
 
   // TODO: Persist session using SharedPreferences/secure storage for a real deployment.

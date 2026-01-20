@@ -26,6 +26,8 @@ class _RegisterPageState extends State<RegisterPage> {
   final headlineCtrl = TextEditingController();
   final skillsCtrl = TextEditingController();
   final yearsCtrl = TextEditingController();
+  final companyNameCtrl = TextEditingController();
+  final companyLocationCtrl = TextEditingController();
   late String selectedRole;
   String? emailError;
   String? passwordError;
@@ -47,12 +49,15 @@ class _RegisterPageState extends State<RegisterPage> {
     headlineCtrl.dispose();
     skillsCtrl.dispose();
     yearsCtrl.dispose();
+    companyNameCtrl.dispose();
+    companyLocationCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final isRecruiter = selectedRole == 'recruiter';
     return Scaffold(
       appBar: AppBar(title: const Text('Create account')),
       body: SafeArea(
@@ -61,26 +66,13 @@ class _RegisterPageState extends State<RegisterPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  ChoiceChip(
-                    label: const Text('Job Seeker'),
-                    selected: selectedRole == 'job_seeker',
-                    onSelected: (_) =>
-                        setState(() => selectedRole = 'job_seeker'),
-                  ),
-                  const SizedBox(width: 10),
-                  ChoiceChip(
-                    label: const Text('Recruiter'),
-                    selected: selectedRole == 'recruiter',
-                    onSelected: (_) =>
-                        setState(() => selectedRole = 'recruiter'),
-                  ),
-                ],
+              Text(
+                isRecruiter ? 'Recruiter account' : 'Job seeker account',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 16),
               FormInput(
-                  label: 'Full name',
+                  label: isRecruiter ? 'Contact name' : 'Full name',
                   controller: fullNameCtrl,
                   hint: 'Alex Doe'),
               const SizedBox(height: 12),
@@ -121,26 +113,38 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
               ]),
               const SizedBox(height: 12),
-              FormInput(
-                  label: 'Preferred location (Country/City)',
-                  controller: locationCtrl,
-                  hint: 'Kuala Lumpur'),
-              const SizedBox(height: 12),
-              FormInput(
-                  label: 'Headline / target role',
-                  controller: headlineCtrl,
-                  hint: 'Frontend Engineer'),
-              const SizedBox(height: 12),
-              FormInput(
-                  label: 'Key skills',
-                  controller: skillsCtrl,
-                  hint: 'React, Flutter, APIs'),
-              const SizedBox(height: 12),
-              FormInput(
-                  label: 'Years of experience',
-                  controller: yearsCtrl,
-                  hint: '4',
-                  keyboardType: TextInputType.number),
+              if (isRecruiter) ...[
+                FormInput(
+                    label: 'Company name',
+                    controller: companyNameCtrl,
+                    hint: 'TechVision Solutions'),
+                const SizedBox(height: 12),
+                FormInput(
+                    label: 'Company location (Country/City)',
+                    controller: companyLocationCtrl,
+                    hint: 'Singapore'),
+              ] else ...[
+                FormInput(
+                    label: 'Preferred location (Country/City)',
+                    controller: locationCtrl,
+                    hint: 'Kuala Lumpur'),
+                const SizedBox(height: 12),
+                FormInput(
+                    label: 'Headline / target role',
+                    controller: headlineCtrl,
+                    hint: 'Frontend Engineer'),
+                const SizedBox(height: 12),
+                FormInput(
+                    label: 'Key skills',
+                    controller: skillsCtrl,
+                    hint: 'React, Flutter, APIs'),
+                const SizedBox(height: 12),
+                FormInput(
+                    label: 'Years of experience',
+                    controller: yearsCtrl,
+                    hint: '4',
+                    keyboardType: TextInputType.number),
+              ],
               const SizedBox(height: 20),
               PrimaryButton(
                 label: 'Create account',
@@ -170,10 +174,16 @@ class _RegisterPageState extends State<RegisterPage> {
                     email: email,
                     password: password,
                     role: selectedRole,
-                    preferredLocation: locationCtrl.text,
-                    headline: headlineCtrl.text,
-                    skills: skillsCtrl.text,
-                    experienceYears: int.tryParse(yearsCtrl.text),
+                    preferredLocation:
+                        isRecruiter ? null : locationCtrl.text,
+                    headline: isRecruiter ? null : headlineCtrl.text,
+                    skills: isRecruiter ? null : skillsCtrl.text,
+                    experienceYears:
+                        isRecruiter ? null : int.tryParse(yearsCtrl.text),
+                    companyName:
+                        isRecruiter ? companyNameCtrl.text : null,
+                    companyLocation:
+                        isRecruiter ? companyLocationCtrl.text : null,
                   );
                   if (!mounted) return;
                   if (auth.session != null) {

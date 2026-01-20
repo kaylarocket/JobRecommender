@@ -43,6 +43,8 @@ def create_user(
     headline: Optional[str],
     skills_text: Optional[str],
     experience_years: Optional[int],
+    company_name: Optional[str] = None,
+    company_location: Optional[str] = None,
 ) -> User:
     user = User(
         id=user_id,
@@ -63,7 +65,11 @@ def create_user(
     user.profile = profile
 
     if role == "recruiter":
-        user.employer = Employer(user_id=user_id)
+        user.employer = Employer(
+            user_id=user_id,
+            company_name=company_name,
+            company_location=company_location,
+        )
 
     db.add(user)
     db.commit()
