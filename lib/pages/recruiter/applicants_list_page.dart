@@ -128,6 +128,28 @@ class _ApplicantsListPageState extends State<ApplicantsListPage> {
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       Text('Status: $status', style: const TextStyle(color: Colors.black54)),
+                                      PopupMenuButton<String>(
+                                        icon: const Icon(Icons.more_horiz, color: Colors.black45),
+                                        onSelected: (value) => _updateApplicantStatus(
+                                          context,
+                                          applicant['id']?.toString() ?? '',
+                                          value,
+                                        ),
+                                        itemBuilder: (context) => const [
+                                          PopupMenuItem(
+                                            value: 'scheduled',
+                                            child: Text('Schedule interview'),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'rejected',
+                                            child: Text('Reject applicant'),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'submitted',
+                                            child: Text('Mark as submitted'),
+                                          ),
+                                        ],
+                                      ),
                                       Text(appliedAt, style: const TextStyle(color: Colors.black54, fontSize: 12)),
                                     ],
                                   ),
@@ -204,6 +226,45 @@ class _ApplicantsListPageState extends State<ApplicantsListPage> {
     if (raw.isEmpty) {
       return 'Submitted';
     }
+    final normalized = raw.toLowerCase();
+    if (normalized == 'scheduled') {
+      return 'Scheduled interview';
+    }
+    if (normalized == 'rejected') {
+      return 'Rejected';
+    }
+    if (normalized == 'submitted') {
+      return 'Submitted';
+    }
     return raw[0].toUpperCase() + raw.substring(1);
+  }
+
+  Future<void> _updateApplicantStatus(
+    BuildContext context,
+    String applicationId,
+    String status,
+  ) async {
+    if (applicationId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Missing application ID')),
+      );
+      return;
+    }
+    try {
+      await context.read<JobProvider>().updateApplicationStatus(
+            applicationId,
+            status,
+            sourceTag: 'applicants_list',
+          );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Applicant marked as ${_formatStatus(status)}')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update status: $e')),
+      );
+    }
   }
 }

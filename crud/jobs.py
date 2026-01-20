@@ -22,6 +22,7 @@ def create_job(
     category: Optional[str],
     company: Optional[str],
     salary: Optional[str],
+    status: str = "active",
     employer_user_id: Optional[str] = None,
     skills_text: Optional[str] = None,
 ) -> Job:
@@ -33,6 +34,7 @@ def create_job(
         category=category,
         company=company,
         salary=salary,
+        status=status,
         employer_user_id=employer_user_id,
         skills_text=skills_text,
     )
@@ -63,6 +65,7 @@ def ensure_job_from_lookup(db: Session, job_id: str, job_lookup: dict) -> Option
         category=str(raw.get("category", "")),
         company=str(raw.get("company", "")),
         salary=str(raw.get("salary", "")),
+        status=str(raw.get("status", "active")),
         employer_user_id=None,
         skills_text=None,
     )

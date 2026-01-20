@@ -120,20 +120,43 @@ class JobDetailsPage extends StatelessWidget {
   }
 
   Widget _chip(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: Colors.black54),
-          const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth.isFinite ? constraints.maxWidth : null;
+        const horizontalPadding = 24.0;
+        const iconWidth = 16.0;
+        const spacing = 6.0;
+        final reservedWidth = horizontalPadding + iconWidth + spacing;
+        final maxTextWidth = maxWidth == null
+            ? null
+            : (maxWidth - reservedWidth).clamp(0.0, maxWidth);
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: Colors.black54),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: maxTextWidth == null
+                    ? const BoxConstraints()
+                    : BoxConstraints(maxWidth: maxTextWidth),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -57,16 +57,19 @@ class _ApplicantsPageState extends State<ApplicantsPage> {
               itemBuilder: (context, index) {
                 final applicant = applicants[index];
                 final name = (applicant['full_name'] ?? '').toString().trim();
-                final status = (applicant['status'] ?? 'Submitted').toString();
+                final status = _formatStatus(applicant['status'] ?? 'Submitted');
                 final headline = (applicant['headline'] ?? '').toString().trim();
                 final scoreValue = applicant['score'];
                 final score = scoreValue is num ? scoreValue.toDouble() : 0.0;
                 final matchPercent = (score * 100).clamp(0, 100).round();
+                final applicationId = (applicant['application_id'] ?? '').toString();
                 return _applicantCard(
                   name: name.isEmpty ? 'Candidate' : name,
                   status: status,
                   headline: headline,
                   matchPercent: matchPercent,
+                  applicationId: applicationId,
+                  onStatusChange: (value) => _updateApplicantStatus(applicationId, value),
                 );
               },
             );
@@ -81,6 +84,8 @@ class _ApplicantsPageState extends State<ApplicantsPage> {
     required String status,
     required String headline,
     required int matchPercent,
+    required String applicationId,
+    required void Function(String) onStatusChange,
   }) {
     return Container(
       padding: const EdgeInsets.all(14),
@@ -116,11 +121,80 @@ class _ApplicantsPageState extends State<ApplicantsPage> {
             children: [
               Text('$matchPercent%', style: const TextStyle(fontWeight: FontWeight.w800)),
               const Text('Match', style: TextStyle(color: Colors.black54, fontSize: 12)),
+              if (applicationId.isNotEmpty)
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_horiz, color: Colors.black45),
+                  onSelected: onStatusChange,
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'scheduled',
+                      child: Text('Schedule interview'),
+                    ),
+                    PopupMenuItem(
+                      value: 'rejected',
+                      child: Text('Reject applicant'),
+                    ),
+                    PopupMenuItem(
+                      value: 'submitted',
+                      child: Text('Mark as submitted'),
+                    ),
+                  ],
+                ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _updateApplicantStatus(String applicationId, String status) async {
+    if (applicationId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Missing application ID')),
+      );
+      return;
+    }
+    try {
+      await context.read<JobProvider>().updateApplicationStatus(
+            applicationId,
+            status,
+            sourceTag: 'applicants_page',
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Applicant marked as ${_formatStatus(status)}')),
+      );
+      setState(() {
+        _futureApplicants = context.read<JobProvider>().fetchApplicantsForJob(
+              widget.jobId,
+              sourceTag: 'applicants_page_refresh',
+            );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update status: $e')),
+      );
+    }
+  }
+
+  String _formatStatus(String value) {
+    final raw = value.trim();
+    if (raw.isEmpty) {
+      return 'Submitted';
+    }
+    final normalized = raw.toLowerCase();
+    if (normalized == 'scheduled') {
+      return 'Scheduled interview';
+    }
+    if (normalized == 'rejected') {
+      return 'Rejected';
+    }
+    if (normalized == 'submitted') {
+      return 'Submitted';
+    }
+    return raw[0].toUpperCase() + raw.substring(1);
   }
 
   Widget _emptyState() {

@@ -6,6 +6,7 @@ class Job {
   final String? category;
   final String? salary;
   final String? descriptions;
+  final String? status;
 
   const Job({
     required this.jobId,
@@ -15,6 +16,7 @@ class Job {
     this.category,
     this.salary,
     this.descriptions,
+    this.status,
   });
 
   String get snippet {
@@ -31,6 +33,7 @@ class Job {
       category: json['category'],
       salary: json['salary'],
       descriptions: json['descriptions'],
+      status: json['status']?.toString(),
     );
   }
 
@@ -43,6 +46,7 @@ class Job {
       'category': category,
       'salary': salary,
       'descriptions': descriptions,
+      'status': status,
     };
   }
 }

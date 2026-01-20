@@ -58,24 +58,7 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  ChoiceChip(
-                    label: const Text('Job Seeker'),
-                    selected: selectedRole == 'job_seeker',
-                    onSelected: (_) =>
-                        setState(() => selectedRole = 'job_seeker'),
-                  ),
-                  const SizedBox(width: 10),
-                  ChoiceChip(
-                    label: const Text('Recruiter'),
-                    selected: selectedRole == 'recruiter',
-                    onSelected: (_) =>
-                        setState(() => selectedRole = 'recruiter'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
               FormInput(
                   label: 'Email',
                   controller: emailCtrl,
@@ -100,7 +83,7 @@ class _LoginPageState extends State<LoginPage> {
                     emailError = _requiredError(email);
                     passwordError = _requiredError(password);
                   });
-                  await auth.login(email, password);
+                  await auth.login(email, password, selectedRole);
                   if (!mounted) return;
                   if (auth.session != null) {
                     _goToDashboard(context, auth);
@@ -176,6 +159,9 @@ class _LoginPageState extends State<LoginPage> {
     }
     if (lower.contains('required')) {
       return 'Please fill in this field.';
+    }
+    if (lower.contains('account not found')) {
+      return 'Account does not exist for this role. Switch to the correct login page.';
     }
     return message;
   }

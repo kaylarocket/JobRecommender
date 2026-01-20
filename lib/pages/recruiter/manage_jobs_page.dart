@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../models/job.dart';
 import '../../providers/job_provider.dart';
 
 class ManageJobsPage extends StatefulWidget {
@@ -27,7 +28,7 @@ class _ManageJobsPageState extends State<ManageJobsPage> {
     final jobs = context.watch<JobProvider>();
     final filteredJobs = _filterStatus == 'All'
         ? jobs.postedJobs
-        : jobs.postedJobs.where((job) => true).toList();
+        : jobs.postedJobs.where((job) => _matchesStatus(job, _filterStatus)).toList();
 
     return Column(
       children: [
@@ -79,6 +80,7 @@ class _ManageJobsPageState extends State<ManageJobsPage> {
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final job = filteredJobs[index];
+                        final statusValue = _normalizeStatus(job.status);
                         return Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -91,6 +93,8 @@ class _ManageJobsPageState extends State<ManageJobsPage> {
                             children: [
                               Text(
                                 job.jobTitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
@@ -99,7 +103,63 @@ class _ManageJobsPageState extends State<ManageJobsPage> {
                               const SizedBox(height: 8),
                               Text(
                                 job.location ?? 'Remote',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: Colors.black54),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Status: ${_labelForStatus(statusValue)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: statusValue,
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: 'active',
+                                          child: Text('Active'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'closed',
+                                          child: Text('Closed'),
+                                        ),
+                                      ],
+                                      onChanged: (value) async {
+                                        if (value == null || value == statusValue) {
+                                          return;
+                                        }
+                                        try {
+                                          await context.read<JobProvider>().updateJobStatus(
+                                                job,
+                                                value,
+                                                sourceTag: 'manage_jobs',
+                                              );
+                                          if (!mounted) return;
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Job marked as ${_labelForStatus(value)}'),
+                                            ),
+                                          );
+                                        } catch (e) {
+                                          if (!mounted) return;
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Failed to update status: $e'),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -109,5 +169,25 @@ class _ManageJobsPageState extends State<ManageJobsPage> {
         ),
       ],
     );
+  }
+
+  bool _matchesStatus(Job job, String filter) {
+    final status = _normalizeStatus(job.status);
+    if (filter == 'Active') {
+      return status == 'active';
+    }
+    if (filter == 'Closed') {
+      return status == 'closed';
+    }
+    return true;
+  }
+
+  String _normalizeStatus(String? status) {
+    final value = (status ?? 'active').toLowerCase();
+    return value == 'closed' ? 'closed' : 'active';
+  }
+
+  String _labelForStatus(String status) {
+    return status == 'closed' ? 'Closed' : 'Active';
   }
 }

@@ -17,12 +17,12 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => _session != null;
   bool get isRecruiter => _session?.profile.role == 'recruiter';
 
-  Future<void> login(String email, String password) async {
+  Future<void> login(String email, String password, String role) async {
     _loading = true;
     _error = null;
     notifyListeners();
     try {
-      _session = await _apiService.login(email: email, password: password);
+      _session = await _apiService.login(email: email, password: password, role: role);
     } catch (e) {
       _error = e.toString();
     } finally {

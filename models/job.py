@@ -23,6 +23,7 @@ class Job(Base):
     category: Mapped[Optional[str]] = mapped_column(String(255))
     company: Mapped[Optional[str]] = mapped_column(String(255))
     salary: Mapped[Optional[str]] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     employer = relationship("User", back_populates="jobs")

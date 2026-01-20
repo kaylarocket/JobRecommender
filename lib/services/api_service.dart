@@ -55,11 +55,15 @@ class ApiService {
     return _parseAuthResponse(resp);
   }
 
-  Future<UserSession> login({required String email, required String password}) async {
+  Future<UserSession> login({
+    required String email,
+    required String password,
+    required String role,
+  }) async {
     final resp = await http.post(
       Uri.parse('$baseUrl/auth/login'),
       headers: _headers(),
-      body: jsonEncode({'email': email, 'password': password}),
+      body: jsonEncode({'email': email, 'password': password, 'role': role}),
     );
     return _parseAuthResponse(resp);
   }
@@ -238,6 +242,33 @@ class ApiService {
     final decoded = jsonDecode(resp.body) as List;
     print('[${DateTime.now()}] [ApiService] GET /employer/jobs/$jobId/recommendations response: status=${resp.statusCode}, applicant_count=${decoded.length}, elapsed_ms=${elapsed}ms');
     return decoded.cast<Map<String, dynamic>>();
+  }
+
+  Future<Job> updateJobStatus(String jobId, String status) async {
+    final resp = await http.patch(
+      Uri.parse('$baseUrl/recruiter/jobs/$jobId/status'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'status': status}),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to update job status: ${resp.body}');
+    }
+    return Job.fromJson(jsonDecode(resp.body));
+  }
+
+  Future<Map<String, dynamic>> updateApplicationStatus(
+    String applicationId,
+    String status,
+  ) async {
+    final resp = await http.patch(
+      Uri.parse('$baseUrl/applications/$applicationId'),
+      headers: _headers(auth: true),
+      body: jsonEncode({'status': status}),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to update applicant status: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
   Future<Job> postJob({

@@ -76,7 +76,7 @@ class JobProvider extends ChangeNotifier {
   Future<void> saveJob(Job job) async {
     await _apiService.saveJob(job.jobId);
     if (!saved.any((j) => j.jobId == job.jobId)) {
-      saved.add(job);
+      saved.insert(0, job);
       notifyListeners();
     }
   }
@@ -131,6 +131,42 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> updateJobStatus(Job job, String status, {String? sourceTag}) async {
+    final source = sourceTag ?? 'unknown';
+    print('[${DateTime.now()}] [JobProvider] updateJobStatus() START for job_id=${job.jobId} status=$status from source=$source');
+    try {
+      final updated = await _apiService.updateJobStatus(job.jobId, status);
+      _replaceJob(postedJobs, updated);
+      _replaceJob(jobs, updated);
+      notifyListeners();
+      print('[${DateTime.now()}] [JobProvider] updateJobStatus() END for job_id=${job.jobId} from source=$source');
+    } catch (e) {
+      print('[${DateTime.now()}] [JobProvider] updateJobStatus() ERROR for job_id=${job.jobId} from source=$source: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateApplicationStatus(
+    String applicationId,
+    String status, {
+    String? sourceTag,
+  }) async {
+    final source = sourceTag ?? 'unknown';
+    print('[${DateTime.now()}] [JobProvider] updateApplicationStatus() START for application_id=$applicationId status=$status from source=$source');
+    try {
+      final updated = await _apiService.updateApplicationStatus(applicationId, status);
+      final idx = applications.indexWhere((app) => app['id'] == applicationId);
+      if (idx != -1) {
+        applications[idx] = updated;
+        notifyListeners();
+      }
+      print('[${DateTime.now()}] [JobProvider] updateApplicationStatus() END for application_id=$applicationId from source=$source');
+    } catch (e) {
+      print('[${DateTime.now()}] [JobProvider] updateApplicationStatus() ERROR for application_id=$applicationId from source=$source: $e');
+      rethrow;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchApplicantsForJob(
     String jobId, {
     int topN = 50,
@@ -172,6 +208,14 @@ class JobProvider extends ChangeNotifier {
     postedJobs.add(job);
     notifyListeners();
     return job;
+  }
+
+  void _replaceJob(List<Job> list, Job updated) {
+    final index = list.indexWhere((job) => job.jobId == updated.jobId);
+    if (index == -1) {
+      return;
+    }
+    list[index] = updated;
   }
 
   Future<void> loadPostedJobs({String? sourceTag}) async {

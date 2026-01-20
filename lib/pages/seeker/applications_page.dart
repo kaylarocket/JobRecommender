@@ -14,6 +14,7 @@ class ApplicationsPage extends StatelessWidget {
       itemCount: applications.length,
       itemBuilder: (context, index) {
         final app = applications[index];
+        final status = _formatStatus(app['status']);
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
@@ -30,7 +31,7 @@ class ApplicationsPage extends StatelessWidget {
                 children: [
                   Text(app['job_title'] ?? 'Job', style: const TextStyle(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 4),
-                  Text('Status: ${app['status']}', style: const TextStyle(color: Colors.black54)),
+                  Text('Status: $status', style: const TextStyle(color: Colors.black54)),
                 ],
               ),
               const Icon(Icons.chevron_right_rounded)
@@ -39,5 +40,23 @@ class ApplicationsPage extends StatelessWidget {
         );
       },
     );
+  }
+
+  String _formatStatus(dynamic value) {
+    final raw = (value ?? '').toString().trim();
+    if (raw.isEmpty) {
+      return 'Submitted';
+    }
+    final normalized = raw.toLowerCase();
+    if (normalized == 'scheduled') {
+      return 'Scheduled interview';
+    }
+    if (normalized == 'rejected') {
+      return 'Rejected';
+    }
+    if (normalized == 'submitted') {
+      return 'Submitted';
+    }
+    return raw[0].toUpperCase() + raw.substring(1);
   }
 }

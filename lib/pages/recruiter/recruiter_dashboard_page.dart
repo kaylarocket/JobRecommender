@@ -193,7 +193,7 @@ class _RecruiterDashboardPageState extends State<RecruiterDashboardPage> {
 
   Widget _applicantCard(Map<String, dynamic> applicant) {
     final roleTitle = (applicant['job_title'] ?? 'Job').toString();
-    final status = (applicant['status'] ?? 'Submitted').toString();
+    final status = _formatStatus(applicant['status']);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -223,5 +223,23 @@ class _RecruiterDashboardPageState extends State<RecruiterDashboardPage> {
         ],
       ),
     );
+  }
+
+  String _formatStatus(dynamic value) {
+    final raw = (value ?? '').toString().trim();
+    if (raw.isEmpty) {
+      return 'Submitted';
+    }
+    final normalized = raw.toLowerCase();
+    if (normalized == 'scheduled') {
+      return 'Scheduled interview';
+    }
+    if (normalized == 'rejected') {
+      return 'Rejected';
+    }
+    if (normalized == 'submitted') {
+      return 'Submitted';
+    }
+    return raw[0].toUpperCase() + raw.substring(1);
   }
 }

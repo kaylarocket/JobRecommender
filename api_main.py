@@ -60,6 +60,7 @@ from crud import saved_jobs as crud_saved_jobs
 from crud import users as crud_users
 from db.session import SessionLocal, get_db
 from models.job import Job
+from models.saved_job import SavedJob
 from models.user import User
 
 
@@ -136,6 +137,7 @@ class HybridArtifacts:
                     "category": job.category or "",
                     "company": job.company or "",
                     "salary": job.salary or "",
+                    "status": job.status or "active",
                 }
                 for job in db_jobs
             ]
@@ -259,6 +261,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    role: str = Field(pattern="^(job_seeker|recruiter)$")
 
 
 class TokenResponse(BaseModel):
@@ -275,6 +278,7 @@ class JobOut(BaseModel):
     category: Optional[str] = None
     salary: Optional[str] = None
     descriptions: Optional[str] = None
+    status: Optional[str] = None
 
 
 class RecommendationOut(BaseModel):
@@ -321,9 +325,17 @@ class PostJobRequest(BaseModel):
     descriptions: str
 
 
+class JobStatusUpdateRequest(BaseModel):
+    status: str = Field(pattern="^(active|closed)$")
+
+
 class ApplyRequest(BaseModel):
     job_id: str
     cover_letter: Optional[str] = None
+
+
+class ApplicationStatusUpdateRequest(BaseModel):
+    status: str = Field(pattern="^(submitted|scheduled|rejected)$")
 
 
 # ----------------------
@@ -403,6 +415,7 @@ def _job_out_from_lookup(job: dict) -> JobOut:
         category=str(job.get("category", "")),
         salary=str(job.get("salary", "")),
         descriptions=str(job.get(JOB_DESC_COL, "")),
+        status=str(job.get("status", "active")),
     )
 
 
@@ -437,6 +450,8 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
     user = crud_users.get_user_by_email(db, payload.email)
     if not user or not verify_password(payload.password, user.password_hash or ""):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if user.role != payload.role:
+        raise HTTPException(status_code=401, detail="Account not found for selected role")
 
     access_token = create_access_token({"sub": user.id})
     return TokenResponse(access_token=access_token, token_type="bearer", user=serialize_user(user))
@@ -449,44 +464,66 @@ def login_user(payload: LoginRequest, db: Session = Depends(get_db)):
 def list_jobs(request: Request, page: int = 1, page_size: int = 20, query: Optional[str] = None, location: Optional[str] = None, category: Optional[str] = None):
     start_time = time.time()
     source = request.headers.get("X-Source", "unknown")
-    
+
+    query_text = query.strip() if query else None
+    location_text = location.strip() if location else None
+    category_text = category.strip() if category else None
+
+    recent_ids: list[str] = []
+    try:
+        recent_ids = [
+            str(job_id)
+            for job_id in db.execute(
+                select(Job.id)
+                .where(Job.employer_user_id.is_not(None))
+                .order_by(Job.created_at.desc())
+            )
+            .scalars()
+            .all()
+        ]
+    except Exception as exc:
+        print(f"[{datetime.now()}] [GET /jobs] failed to fetch recent recruiter jobs: {exc}")
+
     # Use in-memory lookup built at startup and updated on job creation.
     all_jobs = list(ARTIFACTS.job_lookup.values())
-    
+
     def _match(job: dict) -> bool:
-        if query and query.lower() not in str(job.get(JOB_TITLE_COL, "")).lower() and query.lower() not in str(job.get(JOB_DESC_COL, "")).lower():
+        status = str(job.get("status", "active")).lower()
+        if status == "closed":
             return False
-        if location and location.lower() not in str(job.get(JOB_LOCATION_COL, "")).lower():
+        if query_text and query_text.lower() not in str(job.get(JOB_TITLE_COL, "")).lower() and query_text.lower() not in str(job.get(JOB_DESC_COL, "")).lower():
             return False
-        if category and category.lower() not in str(job.get("category", "")).lower():
+        if location_text and location_text.lower() not in str(job.get(JOB_LOCATION_COL, "")).lower():
+            return False
+        if category_text and category_text.lower() not in str(job.get("category", "")).lower():
             return False
         return True
 
     filtered = [job for job in all_jobs if _match(job)]
+    if recent_ids:
+        recent_set = set(recent_ids)
+        lookup_by_id = {str(job.get(JOB_ID_COL, "")): job for job in filtered}
+        ordered_jobs = [lookup_by_id[jid] for jid in recent_ids if jid in lookup_by_id]
+        ordered_jobs.extend(
+            [job for job in filtered if str(job.get(JOB_ID_COL, "")) not in recent_set]
+        )
+    else:
+        ordered_jobs = filtered
+
+    combined = [_job_out_from_lookup(job) for job in ordered_jobs]
     start = (page - 1) * page_size
     end = start + page_size
-    sliced = filtered[start:end]
-    
+    sliced = combined[start:end]
+
     elapsed_ms = int((time.time() - start_time) * 1000)
     print(f"[{datetime.now()}] [GET /jobs] [source={source}] user_id=anonymous, page={page}, page_size={page_size}, query={query}, location={location}, category={category}")
-    print(f"  → total_from_artifacts={len(ARTIFACTS.job_lookup)}, post_filter_count={len(filtered)}, paginated_result_count={len(sliced)}, elapsed_ms={elapsed_ms}, status_code=200")
+    print(f"  → total_from_artifacts={len(ARTIFACTS.job_lookup)}, recent_recruiter_jobs={len(recent_ids)}, post_filter_count={len(ordered_jobs)}, paginated_result_count={len(sliced)}, elapsed_ms={elapsed_ms}, status_code=200")
     
     return JobListResponse(
-        items=[
-            JobOut(
-                job_id=str(job.get(JOB_ID_COL)),
-                job_title=str(job.get(JOB_TITLE_COL, "")),
-                company=str(job.get("company", "")),
-                location=str(job.get(JOB_LOCATION_COL, "")),
-                category=str(job.get("category", "")),
-                salary=str(job.get("salary", "")),
-                descriptions=str(job.get(JOB_DESC_COL, "")),
-            )
-            for job in sliced
-        ],
+        items=sliced,
         page=page,
         page_size=page_size,
-        total=len(filtered),
+        total=len(combined),
     )
 
 
@@ -503,6 +540,7 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
             "category": db_job.category or "",
             "company": db_job.company or "",
             "salary": db_job.salary or "",
+            "status": db_job.status,
         }
         # Update in-memory lookup for consistency
         ARTIFACTS.job_lookup[db_job.id] = job_dict
@@ -515,6 +553,7 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
             category=db_job.category or "",
             salary=db_job.salary or "",
             descriptions=db_job.description or "",
+            status=db_job.status,
         )
     
     # Fallback to in-memory lookup (CSV jobs)
@@ -529,6 +568,7 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
         category=str(job.get("category", "")),
         salary=str(job.get("salary", "")),
         descriptions=str(job.get(JOB_DESC_COL, "")),
+        status=str(job.get("status", "active")),
     )
 
 
@@ -546,6 +586,7 @@ def post_job(payload: PostJobRequest, user=Depends(get_current_user), db: Sessio
         "category": payload.category,
         "salary": payload.salary,
         JOB_DESC_COL: payload.descriptions,
+        "status": "active",
     }
     crud_jobs.create_job(
         db=db,
@@ -556,6 +597,7 @@ def post_job(payload: PostJobRequest, user=Depends(get_current_user), db: Sessio
         category=payload.category,
         company=payload.company,
         salary=payload.salary,
+        status="active",
         employer_user_id=user.id,
         skills_text=None,
     )
@@ -570,6 +612,7 @@ def post_job(payload: PostJobRequest, user=Depends(get_current_user), db: Sessio
         category=payload.category,
         salary=payload.salary,
         descriptions=payload.descriptions,
+        status="active",
     )
 
 
@@ -582,7 +625,7 @@ def get_recruiter_jobs(request: Request, user=Depends(get_current_user), db: Ses
     if user.role != "recruiter":
         raise HTTPException(status_code=403, detail="Only recruiters can access this endpoint")
 
-    jobs = db.execute(select(Job).where(Job.employer_user_id == user.id)).scalars().all()
+    jobs = db.execute(select(Job).where(Job.employer_user_id == user.id).order_by(Job.created_at.desc())).scalars().all()
     
     elapsed_ms = int((time.time() - start_time) * 1000)
     print(f"[{datetime.now()}] [GET /recruiter/jobs] [source={source}] user_id={user.id}")
@@ -597,9 +640,39 @@ def get_recruiter_jobs(request: Request, user=Depends(get_current_user), db: Ses
             category=job.category or "",
             salary=job.salary or "",
             descriptions=job.description or "",
+            status=job.status,
         )
         for job in jobs
     ]
+
+
+@app.patch("/recruiter/jobs/{job_id}/status", response_model=JobOut)
+def update_job_status(job_id: str, payload: JobStatusUpdateRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role != "recruiter":
+        raise HTTPException(status_code=403, detail="Only recruiters can update job status")
+    job = db.get(Job, str(job_id))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.employer_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this job")
+
+    job.status = payload.status
+    db.commit()
+    db.refresh(job)
+
+    if job.id in ARTIFACTS.job_lookup:
+        ARTIFACTS.job_lookup[job.id]["status"] = job.status
+
+    return JobOut(
+        job_id=str(job.id),
+        job_title=job.title or "",
+        company=job.company or "",
+        location=job.location or "",
+        category=job.category or "",
+        salary=job.salary or "",
+        descriptions=job.description or "",
+        status=job.status,
+    )
 
 
 
@@ -670,6 +743,22 @@ def list_applications(user=Depends(get_current_user), db: Session = Depends(get_
     return [_format_application_payload(app) for app in apps]
 
 
+@app.patch("/applications/{application_id}")
+def update_application_status(application_id: str, payload: ApplicationStatusUpdateRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role != "recruiter":
+        raise HTTPException(status_code=403, detail="Only recruiters can update applicant status")
+    application = crud_applications.get_application_with_job(db, application_id)
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if not application.job or application.job.employer_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this application")
+
+    updated = crud_applications.update_application_status(db, application_id, payload.status)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return _format_application_payload(updated)
+
+
 @app.post("/saved/{job_id}")
 def save_job(job_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
     if job_id not in ARTIFACTS.job_lookup:
@@ -687,10 +776,19 @@ def unsave_job(job_id: str, user=Depends(get_current_user), db: Session = Depend
 
 @app.get("/saved", response_model=List[JobOut])
 def list_saved(user=Depends(get_current_user), db: Session = Depends(get_db)):
-    saved_ids = crud_saved_jobs.list_saved_jobs(db, user.id)
-    if not saved_ids:
+    saved_rows = (
+        db.execute(
+            select(SavedJob)
+            .where(SavedJob.user_id == user.id)
+            .order_by(SavedJob.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    if not saved_rows:
         return []
 
+    saved_ids = [row.job_id for row in saved_rows]
     db_jobs = db.execute(select(Job).where(Job.id.in_(saved_ids))).scalars().all()
     db_job_map = {job.id: job for job in db_jobs}
 
@@ -707,6 +805,7 @@ def list_saved(user=Depends(get_current_user), db: Session = Depends(get_db)):
                     category=db_job.category or "",
                     salary=db_job.salary or "",
                     descriptions=db_job.description or "",
+                    status=db_job.status,
                 )
             )
             continue
