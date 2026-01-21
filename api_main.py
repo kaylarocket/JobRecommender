@@ -200,35 +200,57 @@ class HybridArtifacts:
         return self.users_features.loc[best_idx, "user_id"]
 
     def recommend(self, user_id: str, user_text: str, top_k: int = 10, alpha: float = 0.6):
-        if self.vectorizer is None or self.dataset is None or self.model is None:
+        if self.vectorizer is None or self.dataset is None or self.model is None or self.job_tfidf is None:
             raise HTTPException(status_code=500, detail="Models not initialized yet.")
 
-        user_vec = self.vectorizer.transform([user_text.lower()])
+        user_vec = self.vectorizer.transform([str(user_text).lower()])
         content_scores = (user_vec @ self.job_tfidf.T).toarray().ravel()
+        content_scores = np.nan_to_num(content_scores, nan=0.0, posinf=0.0, neginf=0.0)
 
-        proxy_user_id = user_id
         lfm_scores: np.ndarray
         user_id_map, _, _, _ = self.dataset.mapping()
-        if proxy_user_id not in user_id_map:
-            proxy_user_id = self.nearest_user_id(user_vec) or proxy_user_id
+        lfm_scores = np.zeros(len(self.jobs_features))
 
-        if proxy_user_id in user_id_map:
-            lfm_scores = predict_lightfm_scores_for_user(
-                user_id=proxy_user_id,
-                model=self.model,
-                dataset=self.dataset,
-                jobs=self.jobs_features,
-                user_features=self.user_features_matrix,
-                item_features=self.item_features_matrix,
+        if user_id in user_id_map:
+            try:
+                lfm_scores = predict_lightfm_scores_for_user(
+                    user_id=user_id,
+                    model=self.model,
+                    dataset=self.dataset,
+                    jobs=self.jobs_features,
+                    user_features=self.user_features_matrix,
+                    item_features=self.item_features_matrix,
+                )
+            except Exception as exc:
+                print(f"[{datetime.now()}] [recommend] LightFM failed for user_id={user_id}: {exc}")
+        elif content_scores.max() <= 0:
+            proxy_user_id = self.nearest_user_id(user_vec)
+            if proxy_user_id and proxy_user_id in user_id_map:
+                try:
+                    lfm_scores = predict_lightfm_scores_for_user(
+                        user_id=proxy_user_id,
+                        model=self.model,
+                        dataset=self.dataset,
+                        jobs=self.jobs_features,
+                        user_features=self.user_features_matrix,
+                        item_features=self.item_features_matrix,
+                    )
+                except Exception as exc:
+                    print(f"[{datetime.now()}] [recommend] LightFM failed for proxy_user_id={proxy_user_id}: {exc}")
+
+        lfm_scores = np.nan_to_num(lfm_scores, nan=0.0, posinf=0.0, neginf=0.0)
+
+        try:
+            hybrid_scores, content_norm, lfm_norm = compute_hybrid_scores(
+                content_scores=content_scores,
+                lfm_scores=lfm_scores,
+                alpha=alpha,
             )
-        else:
-            lfm_scores = np.zeros(len(self.jobs_features))
-
-        hybrid_scores, content_norm, lfm_norm = compute_hybrid_scores(
-            content_scores=content_scores,
-            lfm_scores=lfm_scores,
-            alpha=alpha,
-        )
+        except Exception as exc:
+            print(f"[{datetime.now()}] [recommend] Hybrid scoring failed: {exc}")
+            hybrid_scores = content_scores
+            content_norm = content_scores
+            lfm_norm = np.zeros(len(content_scores))
 
         rec_df = self.jobs_features.copy()
         rec_df["content_score"] = content_norm
@@ -785,7 +807,7 @@ def delete_recruiter_account(user=Depends(get_current_user), db: Session = Depen
 # ----------------------
 # Applications & saved jobs (lightweight stubs)
 # ----------------------
-def _format_application_payload(app) -> dict:
+def _format_application_payload(app, score: Optional[float] = None) -> dict:
     job_title = ""
     if getattr(app, "job", None) is not None:
         job_title = app.job.title or ""
@@ -802,7 +824,7 @@ def _format_application_payload(app) -> dict:
         applicant_headline = profile.headline or ""
         applicant_location = profile.location or ""
 
-    return {
+    payload = {
         "id": app.id,
         "job_id": app.job_id,
         "user_id": app.user_id,
@@ -814,6 +836,9 @@ def _format_application_payload(app) -> dict:
         "applicant_headline": applicant_headline,
         "applicant_location": applicant_location,
     }
+    if score is not None:
+        payload["score"] = score
+    return payload
 
 
 @app.post("/applications", status_code=201)
@@ -840,8 +865,29 @@ def apply_to_job(payload: ApplyRequest, user=Depends(get_current_user), db: Sess
 def list_applications(user=Depends(get_current_user), db: Session = Depends(get_db)):
     if user.role == "recruiter":
         apps = crud_applications.list_applications_for_employer(db, user.id)
+        score_map: Dict[str, float] = {}
+        apps_by_job: Dict[str, list] = {}
+        for app in apps:
+            job_id = str(app.job_id)
+            apps_by_job.setdefault(job_id, []).append(app)
+        for job_id, job_apps in apps_by_job.items():
+            try:
+                recs = recommend_applicants_for_job(
+                    job_id=job_id,
+                    db_session=db,
+                    top_n=len(job_apps),
+                )
+            except ValueError:
+                continue
+            for rec in recs:
+                app_id = rec.get("application_id")
+                if app_id:
+                    try:
+                        score_map[str(app_id)] = float(rec.get("score") or 0.0)
+                    except (TypeError, ValueError):
+                        score_map[str(app_id)] = 0.0
         return [
-            _format_application_payload(app)
+            _format_application_payload(app, score_map.get(str(app.id), 0.0))
             for app in apps
             if getattr(app, "job", None) is not None or ARTIFACTS.job_lookup.get(app.job_id)
         ]

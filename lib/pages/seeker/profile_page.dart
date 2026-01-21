@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../widgets/primary_button.dart';
-import '../role_selection_page.dart';
+import '../onboarding_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -84,7 +84,7 @@ class _ProfilePageState extends State<ProfilePage> {
               context.read<AuthProvider>().logout();
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (_) => const RoleSelectionPage()),
+                MaterialPageRoute(builder: (_) => const OnboardingPage()),
                 (_) => false,
               );
             },

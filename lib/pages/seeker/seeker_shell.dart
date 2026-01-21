@@ -3,10 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../providers/job_provider.dart';
-import 'applications_page.dart';
-import 'home_page.dart';
-import 'profile_page.dart';
-import 'saved_jobs_page.dart';
+import '../../theme/app_theme.dart';
+import 'applications_page_new.dart';
+import 'home_page_new.dart';
+import 'profile_page_new.dart';
+import 'saved_jobs_page_new.dart';
 
 class SeekerShell extends StatefulWidget {
   const SeekerShell({super.key});
@@ -19,10 +20,10 @@ class _SeekerShellState extends State<SeekerShell> {
   int _index = 0;
 
   final pages = const [
-    SeekerHomePage(),
-    ApplicationsPage(),
-    SavedJobsPage(),
-    ProfilePage(),
+    SeekerHomePageNew(),
+    ApplicationsPageNew(),
+    SavedJobsPageNew(),
+    ProfilePageNew(),
   ];
 
   @override
@@ -43,27 +44,70 @@ class _SeekerShellState extends State<SeekerShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(child: IndexedStack(index: _index, children: pages)),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: 'Home'),
-          NavigationDestination(
-              icon: Icon(Icons.file_present_outlined),
-              selectedIcon: Icon(Icons.file_present),
-              label: 'Applications'),
-          NavigationDestination(
-              icon: Icon(Icons.bookmark_outline),
-              selectedIcon: Icon(Icons.bookmark),
-              label: 'Saved'),
-          NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person),
-              label: 'Profile'),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 20,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(Icons.home_rounded, Icons.home_outlined, 'Home', 0),
+                _buildNavItem(Icons.description_rounded, Icons.description_outlined, 'Applied', 1),
+                _buildNavItem(Icons.bookmark_rounded, Icons.bookmark_outline, 'Saved', 2),
+                _buildNavItem(Icons.person_rounded, Icons.person_outline, 'Profile', 3),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(IconData activeIcon, IconData inactiveIcon, String label, int index) {
+    final isActive = _index == index;
+    return InkWell(
+      onTap: () => setState(() => _index = index),
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(
+          horizontal: isActive ? 16 : 12,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: isActive ? AppTheme.primary.withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isActive ? activeIcon : inactiveIcon,
+              color: isActive ? AppTheme.primary : Colors.black54,
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                color: isActive ? AppTheme.primary : Colors.black54,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

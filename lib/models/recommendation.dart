@@ -1,3 +1,5 @@
+import 'job.dart';
+
 class Recommendation {
   final String jobId;
   final String? jobTitle;
@@ -32,6 +34,20 @@ class Recommendation {
       finalScore: (json['final_score'] ?? 0).toDouble(),
       contentScore: (json['content_score'] ?? 0).toDouble(),
       lfmScore: (json['lfm_score'] ?? 0).toDouble(),
+    );
+  }
+
+  /// Convert Recommendation to Job for compatibility
+  Job toJob() {
+    return Job(
+      jobId: jobId,
+      jobTitle: jobTitle ?? 'Job',
+      company: company,
+      location: location,
+      category: category,
+      salary: salary,
+      descriptions: null,
+      status: null,
     );
   }
 }

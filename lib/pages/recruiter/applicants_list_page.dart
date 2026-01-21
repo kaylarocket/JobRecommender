@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/job_provider.dart';
+import '../../theme/app_theme.dart';
 
 class ApplicantsListPage extends StatefulWidget {
   const ApplicantsListPage({super.key});
@@ -17,151 +18,500 @@ class _ApplicantsListPageState extends State<ApplicantsListPage> {
   @override
   void initState() {
     super.initState();
-    _loadFuture = context.read<JobProvider>().loadApplications(sourceTag: 'applicants_list');
+    _loadFuture = _loadApplicants(sourceTag: 'applicants_list');
   }
 
   @override
   Widget build(BuildContext context) {
     final applications = context.watch<JobProvider>().applications;
-    final statuses = _buildStatusFilters(applications);
+    final postedJobs = context.watch<JobProvider>().postedJobs;
+    
+    // Get job IDs posted by this recruiter
+    final recruiterJobIds = postedJobs.map((job) => job.jobId).toSet();
+    
+    // Filter applications to only those for recruiter's jobs
+    final recruiterApplications = applications
+        .where((app) {
+          final jobId = app['job_id']?.toString() ?? '';
+          return recruiterJobIds.contains(jobId);
+        })
+        .toList();
+    
+    final statuses = _buildStatusFilters(recruiterApplications);
     final selectedStatus = statuses.contains(_selectedStatus) ? _selectedStatus : 'All';
-    final filteredApplicants = _filterApplicants(applications, selectedStatus);
+    final filteredApplicants = _filterApplicants(recruiterApplications, selectedStatus);
 
     return FutureBuilder<void>(
       future: _loadFuture,
       builder: (context, snapshot) {
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
-        return Column(
-          children: [
-            // Title
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: const Row(
-                children: [
-                  Text(
-                    'Applicants',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
-                  ),
-                ],
-              ),
-            ),
-            // Filter
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: statuses
-                      .map((status) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: FilterChip(
-                              label: Text(status),
-                              selected: selectedStatus == status,
-                              onSelected: (_) => setState(() => _selectedStatus = status),
+        return Scaffold(
+          backgroundColor: const Color(0xFFF8F9FA),
+          body: RefreshIndicator(
+            onRefresh: () => _loadApplicants(sourceTag: 'applicants_list_refresh'),
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+              // Beautiful Gradient Header
+              SliverAppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                pinned: true,
+                expandedHeight: 160,
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.primary,
+                          AppTheme.accent,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(32),
+                        bottomRight: Radius.circular(32),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primary.withOpacity(0.3),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Icon(
+                                    Icons.people_rounded,
+                                    color: Colors.white,
+                                    size: 28,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'All Applicants',
+                                        style: TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                          letterSpacing: -0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'View applications across all jobs',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.white.withOpacity(0.9),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ))
-                      .toList(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-            const Divider(height: 1),
-            // List
-            Expanded(
-              child: isLoading && applications.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : filteredApplicants.isEmpty
-                      ? const Center(child: Text('No applicants'))
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: filteredApplicants.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final applicant = filteredApplicants[index];
-                            final name = _formatName(applicant['applicant_name']);
-                            final jobTitle = _formatJobTitle(applicant['job_title']);
-                            final status = _formatStatus(applicant['status']);
-                            final appliedAt = _formatAppliedDate(applicant['created_at']);
-                            return Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFFE2E8F0)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 20,
-                                        backgroundColor: const Color(0xFFEEF2FF),
-                                        child: Text(
-                                          name.isNotEmpty ? name[0].toUpperCase() : 'C',
-                                          style: const TextStyle(color: Color(0xFF4F46E5)),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              name,
-                                              style: const TextStyle(fontWeight: FontWeight.w700),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              jobTitle,
-                                              style: const TextStyle(fontSize: 12, color: Colors.black54),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
+
+              // Filter Chips
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: statuses
+                          .map((status) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: FilterChip(
+                                  label: Text(status),
+                                  selected: selectedStatus == status,
+                                  onSelected: (_) =>
+                                      setState(() => _selectedStatus = status),
+                                  backgroundColor: Colors.white,
+                                  selectedColor:
+                                      AppTheme.accent.withOpacity(0.2),
+                                  side: BorderSide(
+                                    color: selectedStatus == status
+                                        ? AppTheme.accent
+                                        : AppTheme.divider,
                                   ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text('Status: $status', style: const TextStyle(color: Colors.black54)),
-                                      PopupMenuButton<String>(
-                                        icon: const Icon(Icons.more_horiz, color: Colors.black45),
-                                        onSelected: (value) => _updateApplicantStatus(
-                                          context,
-                                          applicant['id']?.toString() ?? '',
-                                          value,
-                                        ),
-                                        itemBuilder: (context) => const [
-                                          PopupMenuItem(
-                                            value: 'scheduled',
-                                            child: Text('Schedule interview'),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'rejected',
-                                            child: Text('Reject applicant'),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'submitted',
-                                            child: Text('Mark as submitted'),
-                                          ),
-                                        ],
-                                      ),
-                                      Text(appliedAt, style: const TextStyle(color: Colors.black54, fontSize: 12)),
-                                    ],
+                                  labelStyle: TextStyle(
+                                    color: selectedStatus == status
+                                        ? AppTheme.accent
+                                        : Colors.black87,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                ],
-                              ),
-                            );
-                          },
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Content
+              if (isLoading && applications.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (filteredApplicants.isEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(40),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: AppTheme.muted,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.people_outline,
+                            size: 48,
+                            color: AppTheme.mutedText,
+                          ),
                         ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No applicants',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final applicant = filteredApplicants[index];
+                        final name = (applicant['applicant_name'] ??
+                                applicant['full_name'] ??
+                                '')
+                            .toString()
+                            .trim();
+                        final status = _formatStatus(
+                            applicant['status'] ?? 'Submitted');
+                        final headline = (applicant['applicant_headline'] ??
+                                applicant['headline'] ??
+                                '')
+                            .toString()
+                            .trim();
+                        final scoreValue = applicant['score'];
+                        final score = scoreValue is num
+                            ? scoreValue.toDouble()
+                            : 0.0;
+                        final matchPercent =
+                            (score * 100).clamp(0, 100).round();
+                        final jobTitle = (applicant['job_title'] ?? '')
+                            .toString()
+                            .trim();
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: _buildApplicantCard(
+                            name: name.isEmpty ? 'Candidate' : name,
+                            status: status,
+                            headline: headline,
+                            matchPercent: matchPercent,
+                            jobTitle: jobTitle,
+                          ),
+                        );
+                      },
+                      childCount: filteredApplicants.length,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
+    );
+  }
+
+  Future<void> _loadApplicants({String sourceTag = 'applicants_list'}) async {
+    final jobs = context.read<JobProvider>();
+    await jobs.loadPostedJobs(sourceTag: sourceTag);
+    await jobs.loadApplications(sourceTag: sourceTag);
+  }
+
+  Widget _buildApplicantCard({
+    required String name,
+    required String status,
+    required String headline,
+    required int matchPercent,
+    required String jobTitle,
+  }) {
+    final statusColor = _getStatusColor(status);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () {
+            // TODO: Navigate to applicant details
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header: Avatar, Name and Match Score
+                Row(
+                  children: [
+                    // Modern Avatar with gradient
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.primary.withOpacity(0.2),
+                            AppTheme.accent.withOpacity(0.2),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppTheme.primary.withOpacity(0.1),
+                          width: 2,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.person_rounded,
+                        color: AppTheme.primary,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // Name and Headline
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 17,
+                                ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (headline.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.work_outline_rounded,
+                                  size: 14,
+                                  color: AppTheme.mutedText,
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    headline,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: AppTheme.mutedText,
+                                          fontSize: 13,
+                                        ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Match Score Badge with gradient
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.primary,
+                            AppTheme.accent,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primary.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            '$matchPercent%',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Match',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.white.withOpacity(0.9),
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Divider
+                Container(
+                  height: 1,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        AppTheme.divider,
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Job Title and Status Row
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (jobTitle.isNotEmpty)
+                            Text(
+                              jobTitle,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: AppTheme.mutedText,
+                                    fontSize: 12,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Status Badge with icon
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: statusColor.withOpacity(0.3),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _getStatusIcon(status),
+                            size: 16,
+                            color: statusColor,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            status,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: statusColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -200,27 +550,6 @@ class _ApplicantsListPageState extends State<ApplicantsListPage> {
     return parsed ?? DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  String _formatAppliedDate(dynamic value) {
-    final parsed = _parseDate(value);
-    if (parsed.year <= 1970) {
-      return 'Applied date unavailable';
-    }
-    final local = parsed.toLocal();
-    final month = local.month.toString().padLeft(2, '0');
-    final day = local.day.toString().padLeft(2, '0');
-    return '${local.year}-$month-$day';
-  }
-
-  String _formatName(dynamic value) {
-    final name = (value ?? '').toString().trim();
-    return name.isEmpty ? 'Candidate' : name;
-  }
-
-  String _formatJobTitle(dynamic value) {
-    final title = (value ?? '').toString().trim();
-    return title.isEmpty ? 'Job' : title;
-  }
-
   String _formatStatus(dynamic value) {
     final raw = (value ?? '').toString().trim();
     if (raw.isEmpty) {
@@ -228,10 +557,13 @@ class _ApplicantsListPageState extends State<ApplicantsListPage> {
     }
     final normalized = raw.toLowerCase();
     if (normalized == 'scheduled') {
-      return 'Scheduled interview';
+      return 'Scheduled';
     }
     if (normalized == 'rejected') {
       return 'Rejected';
+    }
+    if (normalized == 'accepted') {
+      return 'Accepted';
     }
     if (normalized == 'submitted') {
       return 'Submitted';
@@ -239,32 +571,29 @@ class _ApplicantsListPageState extends State<ApplicantsListPage> {
     return raw[0].toUpperCase() + raw.substring(1);
   }
 
-  Future<void> _updateApplicantStatus(
-    BuildContext context,
-    String applicationId,
-    String status,
-  ) async {
-    if (applicationId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Missing application ID')),
-      );
-      return;
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'accepted':
+        return const Color(0xFF10B981);
+      case 'scheduled':
+        return const Color(0xFF3B82F6);
+      case 'rejected':
+        return const Color(0xFFEF4444);
+      default:
+        return const Color(0xFF64748B);
     }
-    try {
-      await context.read<JobProvider>().updateApplicationStatus(
-            applicationId,
-            status,
-            sourceTag: 'applicants_list',
-          );
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Applicant marked as ${_formatStatus(status)}')),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update status: $e')),
-      );
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status.toLowerCase()) {
+      case 'accepted':
+        return Icons.check_circle_rounded;
+      case 'scheduled':
+        return Icons.calendar_today_rounded;
+      case 'rejected':
+        return Icons.cancel_rounded;
+      default:
+        return Icons.send_rounded;
     }
   }
 }
