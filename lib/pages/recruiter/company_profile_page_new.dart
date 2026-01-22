@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../models/user.dart';
 import '../../providers/auth_provider.dart';
 import '../onboarding_page.dart';
-import '../role_selection_page.dart';
 
 class CompanyProfilePageNew extends StatefulWidget {
   const CompanyProfilePageNew({super.key});
@@ -295,7 +294,7 @@ class _CompanyProfilePageNewState extends State<CompanyProfilePageNew> {
                 if (!context.mounted) return;
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (_) => const RoleSelectionPage()),
+                  MaterialPageRoute(builder: (_) => const OnboardingPage()),
                   (_) => false,
                 );
               } catch (e) {

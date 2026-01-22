@@ -7,7 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/form_input.dart';
 import '../../widgets/primary_button.dart';
 import '../recruiter/recruiter_main_page.dart';
-import '../role_selection_page.dart';
+import '../onboarding_page.dart';
 import '../seeker/seeker_shell.dart';
 import 'register_page.dart';
 
@@ -47,7 +47,7 @@ class _LoginPageState extends State<LoginPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.pushReplacement(context,
-              MaterialPageRoute(builder: (_) => const RoleSelectionPage())),
+              MaterialPageRoute(builder: (_) => const OnboardingPage())),
         ),
         title: const Text('Welcome back'),
       ),
